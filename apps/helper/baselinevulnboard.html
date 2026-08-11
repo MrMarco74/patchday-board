@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patchday Board | Open-Source Patchday Report Generator</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;600;700&display=swap">
+
+    <style>
+        :root {
+            --bg-main: #0a0c10;
+            --bg-dark: #12161f;
+            --bg-medium: #1a202c;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --neon-cyan: #00f7ff;
+            --neon-purple: #bc13fe;
+            --border-radius: 6px;
+            --font-mono: 'Fira Code', monospace;
+            --glow-cyan: 0 0 12px rgba(0, 247, 255, 0.4);
+            --box-shadow-glow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            background-color: var(--bg-main) !important;
+            color: var(--text-primary) !important;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* ─── Patchday Generator UI ──────────────────────────────── */
+        .pg-wrap {
+            width: 80%;
+            max-width: 100%;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .pg-title {
+            font-family: var(--font-mono);
+            color: var(--neon-cyan);
+            font-size: 1.5rem;
+            margin-bottom: 0.4rem;
+            text-shadow: var(--glow-cyan);
+        }
+
+        .pg-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+
+        .pg-card {
+            background: var(--bg-dark);
+            border: 1px solid var(--neon-cyan);
+            border-radius: var(--border-radius);
+            padding: 1.8rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--box-shadow-glow);
+        }
+
+        .pg-label {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--neon-cyan);
+            margin-bottom: 0.4rem;
+            letter-spacing: 0.05em;
+        }
+
+        .pg-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 2fr;
+            gap: 1rem;
+            margin-bottom: 1.2rem;
+        }
+
+        .pg-row select,
+        .pg-row input {
+            background: var(--bg-medium);
+            color: var(--text-primary);
+            border: 1px solid rgba(0, 247, 255, 0.3);
+            border-radius: 3px;
+            padding: 0.5rem 0.75rem;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            width: 100%;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .pg-row select:focus,
+        .pg-row input:focus {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 6px rgba(0, 247, 255, 0.3);
+        }
+
+        .pg-btn {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            padding: 0.7rem 2rem;
+            cursor: pointer;
+            letter-spacing: 0.08em;
+            transition: all 0.2s;
+            clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        }
+
+        .pg-btn:hover:not(:disabled) {
+            background: rgba(0, 247, 255, 0.1);
+            box-shadow: var(--glow-cyan);
+        }
+
+        .pg-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .pg-btn-purple {
+            border-color: var(--neon-purple);
+            color: var(--neon-purple);
+        }
+
+        .pg-btn-purple:hover:not(:disabled) {
+            background: rgba(188, 19, 254, 0.1);
+            box-shadow: var(--glow-purple);
+        }
+
+        /* ─── Status-Log ─────────────────────────────────────── */
+        .pg-log {
+            background: var(--bg-darkest);
+            border: 1px solid rgba(0, 247, 255, 0.2);
+            border-radius: 3px;
+            padding: 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            min-height: 120px;
+            max-height: 360px;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+        }
+
+        .pg-log-line {
+            display: flex;
+            gap: 0.8rem;
+            padding: 0.2rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+
+        .pg-log-ts   { color: rgba(0, 247, 255, 0.4); min-width: 60px; flex-shrink: 0; }
+        .pg-log-step { color: var(--neon-cyan);        min-width: 100px; font-weight: 600; flex-shrink: 0; }
+        .pg-log-msg  { color: var(--text-primary); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pg-log-err  { color: #ff4455; }
+
+        /* ─── SSVC-Doku ──────────────────────────────────────── */
+        .ssvc-doc-body { display: none; }
+        .ssvc-doc-body.ssvc-open { display: block; }
+
+        /* ─── Progress Bar ───────────────────────────────────── */
+        .pg-progress-wrap {
+            background: var(--bg-medium);
+            border: 1px solid rgba(0, 247, 255, 0.2);
+            border-radius: 2px;
+            height: 6px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .pg-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+            width: 0%;
+            transition: width 0.4s ease;
+            box-shadow: 0 0 8px rgba(0,247,255,0.6);
+        }
+
+        /* ─── Download Links ─────────────────────────────────── */
+        .pg-downloads {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 1.2rem;
+        }
+
+        .pg-download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.55rem 1.2rem;
+            border: 1px solid rgba(0, 247, 255, 0.4);
+            border-radius: 3px;
+            color: var(--neon-cyan);
+            text-decoration: none;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            background: rgba(0, 247, 255, 0.05);
+            transition: all 0.2s;
+        }
+
+        .pg-download-btn:hover {
+            background: rgba(0, 247, 255, 0.15);
+            box-shadow: var(--glow-cyan);
+            border-color: var(--neon-cyan);
+        }
+
+        /* ─── Reports Liste ──────────────────────────────────── */
+        .pg-report-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.7rem 0;
+            border-bottom: 1px solid rgba(0, 247, 255, 0.08);
+            gap: 1rem;
+        }
+
+        .pg-report-name {
+            font-family: var(--font-mono);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .pg-report-links {
+            display: flex;
+            gap: 0.6rem;
+            align-items: center;
+        }
+
+        .pg-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.4rem 0.75rem;
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            cursor: pointer;
+            border: 1px solid;
+            background: transparent;
+            transition: all 0.2s;
+        }
+        .pg-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pg-action-btn-archive {
+            border-color: rgba(255,200,0,0.5);
+            color: #ffc800;
+        }
+        .pg-action-btn-archive:hover:not(:disabled) {
+            background: rgba(255,200,0,0.1);
+        }
+        .pg-action-btn-delete {
+            border-color: rgba(255,68,85,0.5);
+            color: #ff4455;
+        }
+        .pg-action-btn-delete:hover:not(:disabled) {
+            background: rgba(255,68,85,0.1);
+        }
+
+        /* ─── Status Badges ──────────────────────────────────── */
+        .pg-badge {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.15rem 0.5rem;
+        .pg-badge-ok  { background: rgba(0,247,255,0.15); color: var(--neon-cyan); border: 1px solid rgba(0,247,255,0.4); }
+        .pg-badge-err { background: rgba(255,68,85,0.15);  color: #ff4455;         border: 1px solid rgba(255,68,85,0.4); }
+        .pg-badge-warn{ background: rgba(255,200,0,0.15);  color: #ffc800;         border: 1px solid rgba(255,200,0,0.4); }
+
+        .pg-internal-note {
+            background: rgba(188, 19, 254, 0.08);
+            border: 1px solid rgba(188, 19, 254, 0.3);
+            border-radius: 3px;
+            padding: 0.8rem 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 600px) {
+            .pg-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+
+<body>
+<header class="site-header" style="padding:1rem 2rem; border-bottom:1px solid rgba(0,247,255,0.1); margin-bottom:2rem;">
+    <div class="logo">
+        <a href="#" style="text-decoration: none; color: inherit; font-family:var(--font-mono); color:var(--neon-cyan); font-weight:700;">
+            &gt; patchday-board_<span class="cursor"></span>
+        </a>
+</header>
+
+<div class="pg-wrap">
+
+    <div style="display:flex; align-items:center; gap:1.2rem; margin-bottom:0.5rem;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="52" height="52" style="flex-shrink:0;">
+          <defs>
+            <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#0a0a0e"/><stop offset="100%" style="stop-color:#111116"/>
+            </linearGradient>
+          </defs>
+          <rect x="4" y="4" width="248" height="248" rx="32" ry="32" fill="url(#bg)" stroke="#00f7ff" stroke-width="2" opacity="0.9"/>
+          <polygon points="128,30 200,65 200,145 128,220 56,145 56,65" fill="#0a1a1a" stroke="#00f7ff" stroke-width="2.5" filter="url(#glow)"/>
+          <polygon points="128,48 184,76 184,140 128,200 72,140 72,76" fill="none" stroke="#00f7ff" stroke-width="0.8" opacity="0.3"/>
+          <text x="86" y="150" font-family="'Fira Code','Courier New',monospace" font-size="72" font-weight="bold" fill="#00f7ff" filter="url(#glow)">&gt;</text>
+          <text x="148" y="163" font-family="'Fira Code','Courier New',monospace" font-size="38" font-weight="bold" fill="#bc13fe" filter="url(#glow)">_</text>
+        </svg>
+        <div class="pg-title">&gt; patchday_board<span class="cursor"></span></div>
+    </div>
+    <div class="pg-subtitle">
+        Monatlicher Patchday-Sicherheitsbericht | Live Vendor APIs (MSRC &amp; Red Hat) &middot; LLM Engine
+    </div>
+
+    <!-- ─── Konfiguration ─────────────────────────────────────────────────── -->
+    <div class="pg-card">
+        <div style="font-family: var(--font-mono); color: var(--neon-purple); font-size:0.85rem; margin-bottom:1.2rem; letter-spacing:0.06em;">
+            // KONFIGURATION
+        </div>
+
+        <div class="pg-row">
+            <div>
+                <label class="pg-label" for="sel-month">MONAT</label>
+                <select id="sel-month">
+                    <option value="Januar">Januar</option>
+                    <option value="Februar">Februar</option>
+                    <option value="M&#228;rz">M&#228;rz</option>
+                    <option value="April">April</option>
+                    <option value="Mai">Mai</option>
+                    <option value="Juni" selected>Juni</option>
+                    <option value="Juli">Juli</option>
+                    <option value="August">August</option>
+                    <option value="September">September</option>
+                    <option value="Oktober">Oktober</option>
+                    <option value="November">November</option>
+                    <option value="Dezember">Dezember</option>
+                </select>
+            </div>
+            <div>
+                <label class="pg-label" for="sel-year">JAHR</label>
+                <select id="sel-year"></select>
+            </div>
+            <div>
+                <label class="pg-label" for="sel-model">LLM MODELL</label>
+                <div style="display:flex; gap:0.5rem;">
+                    <select id="sel-model" style="flex:1;">
+                        <option value="">Lade Modelle...</option>
+                    </select>
+                    <button type="button" class="pg-btn pg-btn-purple" id="btn-save-default-model"
+                            title="Einstellungen (Modell, URL, Key) speichern" style="padding:0.5rem 0.7rem;" onclick="saveSettings()">
+                        <i class="fas fa-save"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="pg-row" style="grid-template-columns: 2fr 2fr; margin-bottom: 1.2rem;">
+            <div>
+                <label class="pg-label" for="txt-api-url">LLM API URL</label>
+                <input type="text" id="txt-api-url" placeholder="http://localhost:11434">
+            </div>
+            <div>
+                <label class="pg-label" for="txt-api-key">API KEY / TOKEN (OPTIONAL)</label>
+                <input type="password" id="txt-api-key" placeholder="z. B. Bearer Token">
+            </div>
+        </div>
+
+        <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+            <button class="pg-btn" id="btn-generate" disabled>
+                <i class="fas fa-bolt"></i>&nbsp; Bericht generieren
+            </button>
+            <button class="pg-btn" id="btn-cancel" style="display:none; background:rgba(255,68,85,0.12); border-color:#ff4455; color:#ff4455;" onclick="cancelGeneration()">
+                <i class="fas fa-stop-circle"></i>&nbsp; Abbrechen
+            </button>
+            <button class="pg-btn pg-btn-purple" id="btn-refresh-models" title="Modellliste neu laden">
+                <i class="fas fa-sync-alt"></i>&nbsp; Modelle
+            </button>
+            <span id="gen-status-text" style="font-family:var(--font-mono); font-size:0.82rem; color:var(--text-secondary);"></span>
+        </div>
+    </div>
+
+    <!-- ─── Fortschritt ──────────────────────────────────────────────────── -->
+    <div class="pg-card" id="progress-card" style="display:none;">
+        <div style="font-family: var(--font-mono); color: var(--neon-purple); font-size:0.85rem; margin-bottom:1rem; letter-spacing:0.06em;">
+            // FORTSCHRITT
+        </div>
+
+        <div class="pg-progress-wrap">
+            <div class="pg-progress-bar" id="progress-bar"></div>
+        </div>
+
+        <div class="pg-log" id="log-output"></div>
+
+        <!-- Downloads (werden nach Fertigstellung eingeblendet) -->
+        <div id="download-section" style="display:none;">
+            <div style="font-family:var(--font-mono); color:var(--neon-cyan); font-size:0.85rem; margin-bottom:0.8rem;">
+                // DOWNLOAD
+            </div>
+            <div class="pg-downloads" id="download-links"></div>
+        </div>
+    </div>
+
+    <!-- ─── Vorhandene Berichte ──────────────────────────────────────────── -->
+    <div class="pg-card">
+        <div style="font-family: var(--font-mono); color: var(--neon-purple); font-size:0.85rem; margin-bottom:1rem; letter-spacing:0.06em;">
+            // VORHANDENE BERICHTE
+        </div>
+        <div id="reports-list">
+            <div style="color:var(--text-secondary); font-size:0.85rem; font-family:var(--font-mono);">
+                Lade Berichte...
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── SSVC-Dokumentation ──────────────────────────────────────────────── -->
+    <div class="pg-card" style="margin-top:1.5rem;">
+    <div style="font-family:var(--font-mono);color:var(--neon-purple);font-size:0.85rem;margin-bottom:1rem;letter-spacing:0.06em;cursor:pointer;display:flex;align-items:center;gap:0.6rem;" onclick="const d=document.getElementById('ssvc-doc');d.classList.toggle('ssvc-open');document.getElementById('ssvc-toggle-icon').textContent=d.classList.contains('ssvc-open')?'[zuklappen]':'[aufklappen]';">
+        // SSVC &amp; DATENQUELLEN — DOKUMENTATION
+        <span id="ssvc-toggle-icon" style="font-size:0.75rem;opacity:0.6;">[aufklappen]</span>
+    </div>
+    <div id="ssvc-doc" class="ssvc-doc-body">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
+
+            <!-- SSVC-Logik -->
+            <div>
+                <div style="font-family:var(--font-mono);color:var(--neon-cyan);font-size:0.8rem;margin-bottom:0.8rem;border-bottom:1px solid rgba(0,247,255,0.15);padding-bottom:0.4rem;">
+                    ⚙ SSVC-BERECHNUNG
+                </div>
+                <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.8rem;">
+                    SSVC (Stakeholder-Specific Vulnerability Categorization) priorisiert Schwachstellen nach ihrer
+                    tatsächlichen Ausnutzbarkeit &mdash; nicht nur nach CVSS-Score.
+                </p>
+                <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+                    <thead>
+                        <tr style="color:var(--text-secondary);text-align:left;border-bottom:1px solid rgba(255,255,255,0.08);">
+                            <th style="padding:4px 8px;">Entscheidung</th>
+                            <th style="padding:4px 8px;">Auslöser (unsere Logik)</th>
+                            <th style="padding:4px 8px;">Maßnahme</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <td style="padding:5px 8px;"><span style="background:#fdecea;color:#b71c1c;border:1px solid #ef9a9a;border-radius:3px;padding:2px 8px;font-weight:700;font-size:0.75rem;">🚨 Act</span></td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">MSRC meldet aktiven Exploit (<code>Exploited: Yes</code>)</td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">Sofort patchen (&lt; 24 h)</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <td style="padding:5px 8px;"><span style="background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:3px;padding:2px 8px;font-weight:700;font-size:0.75rem;">⚠ Attend</span></td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">MSRC: Exploit vorhanden <em>oder</em> CVE als RCE eingestuft</td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">Priorisiert innerhalb des Patchfensters</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <td style="padding:5px 8px;"><span style="background:#fffde7;color:#f57f17;border:1px solid #ffe082;border-radius:3px;padding:2px 8px;font-weight:700;font-size:0.75rem;">👁 Track*</span></td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">Critical/High ohne bekannten Exploit, möglicherweise relevant</td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">Engmaschig beobachten</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:5px 8px;"><span style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:3px;padding:2px 8px;font-weight:700;font-size:0.75rem;">✓ Track</span></td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">Medium/Low, kein Exploit, kein RCE</td>
+                            <td style="padding:5px 8px;color:var(--text-secondary);">Regulärer Patch-Zyklus</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Datenquellen -->
+            <div>
+                <div style="font-family:var(--font-mono);color:var(--neon-cyan);font-size:0.8rem;margin-bottom:0.8rem;border-bottom:1px solid rgba(0,247,255,0.15);padding-bottom:0.4rem;">
+                    📡 DATENQUELLEN
+                </div>
+
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:0.8rem;color:var(--text-primary);font-weight:600;margin-bottom:0.3rem;">MSRC CVRF v3 API <span style="font-weight:400;color:var(--text-secondary);font-size:0.75rem;">(Microsoft)</span></div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
+                        <code style="font-size:0.72rem;">api.msrc.microsoft.com/cvrf/v3.0/cvrf/{Jahr}-{Monat}</code><br>
+                        Liefert alle Microsoft-CVEs des Monats als JSON-CVRF-Dokument.
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size:0.8rem;color:var(--text-primary);font-weight:600;margin-bottom:0.3rem;">Red Hat Security Data API <span style="font-weight:400;color:var(--text-secondary);font-size:0.75rem;">(Red Hat)</span></div>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);line-height:1.5;">
+                        <code style="font-size:0.72rem;">access.redhat.com/labs/securitydataapi/cve.json</code><br>
+                        Liefert Red Hat Security Advisories (RHSA) und CVE-Einstufungen.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+</div>
+
+<!-- ─── Footer ──────────────────────────────────────────────────────────────── -->
+<footer style="text-align:center; padding:2rem; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary); border-top:1px solid rgba(0,247,255,0.1); margin-top:3rem;">
+    &gt; patchday-board v1.0 &nbsp;|&nbsp; Open-Source Patchday Report Generator &nbsp;|&nbsp; MIT License
+</footer>
+
+<script>
+/* ─── Konfiguration ─────────────────────────────────────────────────────────── */
+const BACKEND = window.location.origin;
+
+const MONTHS_DE = {
+    "Januar":0,"Februar":1,"März":2,"April":3,"Mai":4,"Juni":5,
+    "Juli":6,"August":7,"September":8,"Oktober":9,"November":10,"Dezember":11
+};
+let _currentES = null;
+
+/* ─── Utilities ─────────────────────────────────────────────────────────────── */
+function ts() {
+    return new Date().toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function logLine(step, msg, isErr=false) {
+    const log = document.getElementById('log-output');
+    const div = document.createElement('div');
+    div.className = 'pg-log-line';
+    div.innerHTML =
+        `<span class="pg-log-ts">${ts()}</span>` +
+        `<span class="pg-log-step">[${step}]</span>` +
+        `<span class="${isErr ? 'pg-log-err' : 'pg-log-msg'}">${msg}</span>`;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
+
+function setProgress(pct) {
+    document.getElementById('progress-bar').style.width = Math.min(pct, 100) + '%';
+}
+
+/* ─── Initiales Setup ───────────────────────────────────────────────────────── */
+
+// Jahresauswahl
+(function() {
+    const sel = document.getElementById('sel-year');
+    const now = new Date().getFullYear();
+    for (let y = now; y >= now - 1; y--) {
+        const o = document.createElement('option');
+        o.value = y; o.text = y;
+        if (y === now) o.selected = true;
+        sel.appendChild(o);
+    }
+    // Aktuellen Monat vorauswählen
+    const curMonth = Object.keys(MONTHS_DE)[new Date().getMonth()];
+    document.getElementById('sel-month').value = curMonth || 'Juni';
+})();
+
+/* ─── Backend prüfen ────────────────────────────────────────────────────────── */
+async function checkBackend() {
+    const statusEl = document.getElementById('backend-status');
+    try {
+        const r = await fetch(`${BACKEND}/api/models`, {signal: AbortSignal.timeout(4000)});
+        if (r.ok) {
+            statusEl.textContent = 'verbunden ✓';
+            statusEl.style.color = 'var(--neon-cyan)';
+            return true;
+        }
+    } catch (_) {}
+    statusEl.textContent = 'nicht erreichbar — nur im Heimnetz verfügbar';
+    statusEl.style.color = '#ff4455';
+    document.getElementById('btn-generate').title = 'Nur im Heimnetz verfügbar';
+    return false;
+}
+
+
+
+/* ─── Modelle laden ─────────────────────────────────────────────────────────── */
+async function loadModels() {
+    const sel = document.getElementById('sel-model');
+    const apiUrlInput = document.getElementById('txt-api-url');
+    const apiKeyInput = document.getElementById('txt-api-key');
+    try {
+        const r = await fetch(`${BACKEND}/api/models`);
+        const d = await r.json();
+        if (d.api_url && apiUrlInput && !apiUrlInput.value) apiUrlInput.value = d.api_url;
+        if (d.api_key && apiKeyInput && !apiKeyInput.value) apiKeyInput.value = d.api_key;
+
+        sel.innerHTML = '';
+        if (!d.models || d.models.length === 0) {
+            sel.innerHTML = '<option value="">Keine Modelle gefunden</option>';
+            return;
+        }
+        d.models.forEach(m => {
+            const o = document.createElement('option');
+            o.value = m; o.text = m;
+            if (m === d.default) o.selected = true;
+            sel.appendChild(o);
+        });
+        document.getElementById('btn-generate').disabled = false;
+        document.getElementById('gen-status-text').textContent =
+            `${d.models.length} Modell${d.models.length !== 1 ? 'e' : ''} verfügbar`;
+    } catch (e) {
+        sel.innerHTML = '<option value="">Fehler beim Laden</option>';
+        document.getElementById('gen-status-text').textContent = `Fehler: ${e.message}`;
+    }
+}
+
+/* ─── Berichte laden ────────────────────────────────────────────────────────── */
+async function loadReports() {
+    const el = document.getElementById('reports-list');
+    try {
+        const r = await fetch(`${BACKEND}/api/reports`);
+        const d = await r.json();
+        if (!d.reports || d.reports.length === 0) {
+            el.innerHTML = '<div style="color:var(--text-secondary); font-family:var(--font-mono); font-size:0.85rem;">Noch keine Berichte vorhanden.</div>';
+            return;
+        }
+        el.innerHTML = d.reports.map(rep => {
+            const links = [
+                rep.html ? `<a class="pg-download-btn" href="${BACKEND}${rep.html}" target="_blank"><i class="fas fa-file-code"></i> HTML</a>` : '',
+                rep.md   ? `<a class="pg-download-btn" href="${BACKEND}${rep.md}"   target="_blank"><i class="fab fa-markdown"></i> MD</a>`  : '',
+                rep.eml  ? `<a class="pg-download-btn" href="${BACKEND}${rep.eml}"  download><i class="fas fa-envelope"></i> EML</a>` : '',
+                rep.pdf  ? `<a class="pg-download-btn" href="${BACKEND}${rep.pdf}"  download style="border-color:rgba(255,82,82,0.6);color:#ff5252;background:rgba(255,82,82,0.05);"><i class="fas fa-file-pdf"></i> PDF</a>` : `<span class="pg-download-btn" title="PDF nicht verfügbar" style="opacity:0.3;cursor:not-allowed;border-style:dashed;"><i class="fas fa-file-pdf"></i> PDF</span>`,
+                rep.xlsx ? `<a class="pg-download-btn" href="${BACKEND}${rep.xlsx}" download style="border-color:rgba(76,175,80,0.6);color:#4caf50;background:rgba(76,175,80,0.05);"><i class="fas fa-file-excel"></i> XLSX</a>` : `<span class="pg-download-btn" title="XLSX nicht verfügbar" style="opacity:0.3;cursor:not-allowed;border-style:dashed;"><i class="fas fa-file-excel"></i> XLSX</span>`,
+            ].filter(Boolean).join('');
+            const dt = new Date(rep.mtime).toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
+            const kb = (rep.size / 1024).toFixed(1);
+            const n = rep.name;
+            return `
+            <div class="pg-report-item" id="report-row-${n}">
+                <div>
+                    <div class="pg-report-name">${n}</div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-mono);">${dt} &middot; ${kb} KB</div>
+                </div>
+                <div class="pg-report-links">
+                    ${links}
+                    <button class="pg-action-btn pg-action-btn-archive" onclick="archiveReport('${n}', this)" title="Archivieren">
+                        <i class="fas fa-box-archive"></i> Archiv
+                    </button>
+                    <button class="pg-action-btn pg-action-btn-delete" onclick="deleteReport('${n}', this)" title="Löschen">
+                        <i class="fas fa-trash-alt"></i> Löschen
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        el.innerHTML = `<div style="color:#ff4455; font-family:var(--font-mono); font-size:0.82rem;">Fehler: ${e.message}</div>`;
+    }
+}
+
+/* ─── Externer Flow (Polling) ───────────────────────────────────────────────── */
+async function startExternalGeneration(model, month, year) {
+    logLine('EXTERN', 'Auftrag wird an externen Queue übergeben...');
+    const resp = await fetch(`${EXT_BASE}/submit.php`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({model, month, year}),
+    });
+    const d = await resp.json();
+    if (!d.ok) {
+        logLine('ERROR', d.error || 'Fehler beim Einreihen', true);
+        document.getElementById('btn-generate').disabled = false;
+        return;
+    }
+    logLine('QUEUE', `Auftrag eingereiht — warte auf internen Poller (max. ~30s)...`);
+    setProgress(5);
+
+    // Ergebnis abfragen
+    _extPollTimer = setInterval(async () => {
+        try {
+            const r = await fetch(`${EXT_BASE}/result.json?_=${Date.now()}`);
+            if (!r.ok) return;
+            const res = await r.json();
+            if (res.status === 'running') {
+                logLine('LLM', 'Backend generiert Bericht...');
+                setProgress(50);
+            } else if (res.status === 'done') {
+                clearInterval(_extPollTimer);
+                setProgress(100);
+                logLine('COMPLETE', 'Bericht fertig!');
+                const dl = document.getElementById('download-links');
+                if (res.public_url) {
+                    dl.innerHTML = `<a class="pg-download-btn" href="${res.public_url}" target="_blank" style="border-color:var(--neon-purple);color:var(--neon-purple);"><i class="fas fa-globe"></i> Bericht öffnen</a>`;
+                    const banner = document.getElementById('public-url-banner');
+                    const link   = document.getElementById('public-url-link');
+                    link.href = res.public_url;
+                    link.textContent = res.public_url;
+                    banner.style.display = '';
+                }
+                document.getElementById('download-section').style.display = '';
+                document.getElementById('btn-generate').disabled = false;
+            } else if (res.status === 'error') {
+                clearInterval(_extPollTimer);
+                logLine('ERROR', res.error || 'Unbekannter Fehler', true);
+                document.getElementById('btn-generate').disabled = false;
+            }
+        } catch (_) {}
+    }, 8000);
+}
+
+/* ─── Generierung abbrechen ─────────────────────────────────────────────────── */
+function cancelGeneration() {
+    if (_currentES) { _currentES.close(); _currentES = null; }
+    if (_extPollTimer) { clearInterval(_extPollTimer); _extPollTimer = null; }
+    logLine('CANCEL', 'Abbruch wird gesendet...', true);
+    document.getElementById('btn-cancel').disabled = true;
+    fetch(`${BACKEND}/cancel`, {method: 'POST'})
+        .then(() => logLine('CANCEL', 'Backend gestoppt, GPU freigegeben.', true))
+        .catch(() => logLine('CANCEL', 'Backend-Cancel fehlgeschlagen.', true))
+        .finally(() => { document.getElementById('btn-cancel').disabled = false; });
+    document.getElementById('btn-cancel').style.display   = 'none';
+    document.getElementById('btn-generate').disabled      = false;
+    document.getElementById('progress-bar').style.background = '#ff4455';
+}
+
+/* ─── Generierung starten ───────────────────────────────────────────────────── */
+async function startGeneration() {
+    const model = document.getElementById('sel-model').value;
+    const month = document.getElementById('sel-month').value;
+    const year  = document.getElementById('sel-year').value;
+
+    if (!month || !year) return;
+
+    // UI vorbereiten
+    document.getElementById('btn-generate').disabled = true;
+    document.getElementById('progress-card').style.display = '';
+    document.getElementById('download-section').style.display = 'none';
+    document.getElementById('download-links').innerHTML = '';
+    document.getElementById('log-output').innerHTML = '';
+    document.getElementById('progress-bar').style.width = '0%';
+
+    document.getElementById('btn-cancel').style.display = '';
+    document.getElementById('progress-bar').style.background = '';
+
+    logLine('START', `Starte Bericht für ${month} ${year} — Modell: "${model || 'auto'}" | Quellen: Microsoft MSRC + Red Hat`);
+
+    const url = `${BACKEND}/generate?model=${encodeURIComponent(model)}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
+    const es = new EventSource(url);
+    _currentES = es;
+
+    es.onmessage = (e) => {
+        let data;
+        try { data = JSON.parse(e.data); } catch (_) { return; }
+
+        const step = (data.step || '').toUpperCase();
+        const msg  = data.msg  || '';
+        const pct  = data.pct  != null ? data.pct : null;
+
+        function _done() {
+            es.close(); _currentES = null;
+            document.getElementById('btn-cancel').style.display  = 'none';
+            document.getElementById('btn-generate').disabled     = false;
+        }
+
+        if (step === 'ERROR') {
+            logLine(step, msg, true);
+            setProgress(100);
+            document.getElementById('progress-bar').style.background = '#ff4455';
+            _done(); return;
+        }
+
+        if (msg) logLine(step, msg);
+        if (pct != null) setProgress(pct);
+
+        if (step === 'COMPLETE' && data.files) {
+            const dl = document.getElementById('download-links');
+            const base = BACKEND;
+            if (data.files.html) dl.innerHTML +=
+                `<a class="pg-download-btn" href="${base}${data.files.html}" target="_blank">` +
+                `<i class="fas fa-file-code"></i> HTML intern</a>`;
+            if (data.files.md) dl.innerHTML +=
+                `<a class="pg-download-btn" href="${base}${data.files.md}" target="_blank">` +
+                `<i class="fab fa-markdown"></i> Markdown</a>`;
+            if (data.files.eml) dl.innerHTML +=
+                `<a class="pg-download-btn" href="${base}${data.files.eml}" download>` +
+                `<i class="fas fa-envelope"></i> E-Mail (.eml)</a>`;
+            if (data.files.pdf) dl.innerHTML +=
+                `<a class="pg-download-btn" href="${base}${data.files.pdf}" download style="border-color:rgba(255,82,82,0.6);color:#ff5252;background:rgba(255,82,82,0.05);">` +
+                `<i class="fas fa-file-pdf"></i> PDF</a>`;
+            if (data.files.xlsx) dl.innerHTML +=
+                `<a class="pg-download-btn" href="${base}${data.files.xlsx}" download style="border-color:rgba(76,175,80,0.6);color:#4caf50;background:rgba(76,175,80,0.05);">` +
+                `<i class="fas fa-file-excel"></i> Excel (.xlsx)</a>`;
+            if (data.public_url) {
+                dl.innerHTML +=
+                    `<a class="pg-download-btn" href="${data.public_url}" target="_blank" style="border-color:var(--neon-purple);color:var(--neon-purple);">` +
+                    `<i class="fas fa-globe"></i> Öffentlicher Link</a>`;
+            }
+            document.getElementById('download-section').style.display = '';
+            _done(); setTimeout(loadReports, 500);
+        }
+    };
+
+    es.onerror = () => {
+        if (!_currentES) return; // bereits per Cancel geschlossen
+        logLine('ERROR', 'Verbindung zum Backend unterbrochen.', true);
+        document.getElementById('progress-bar').style.background = '#ff4455';
+        _done();
+    };
+}
+
+/* ─── Einstellungen speichern ────────────────────────────────────────────────── */
+async function saveSettings() {
+    const model  = document.getElementById('sel-model').value;
+    const apiUrl = document.getElementById('txt-api-url').value.trim();
+    const apiKey = document.getElementById('txt-api-key').value.trim();
+    const btn = document.getElementById('btn-save-default-model');
+    btn.disabled = true;
+    try {
+        const r = await fetch(`${BACKEND}/api/settings`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                default_model: model,
+                api_url: apiUrl,
+                api_key: apiKey
+            }),
+        });
+        const d = await r.json();
+        btn.innerHTML = d.ok ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>';
+        if (d.ok) await loadModels();
+    } catch (_) {
+        btn.innerHTML = '<i class="fas fa-times"></i>';
+    } finally {
+        setTimeout(() => { btn.innerHTML = '<i class="fas fa-save"></i>'; btn.disabled = false; }, 1500);
+    }
+}
+
+
+
+async function pollRhelCreditProgress() {
+    const wrap = document.getElementById('rhel-credit-progress');
+    const text = document.getElementById('rhel-credit-text');
+    const bar  = document.getElementById('rhel-credit-bar');
+    try {
+        const r = await fetch(`${BACKEND}/api/rhel-credit-progress`, {signal: AbortSignal.timeout(6000)});
+        const d = await r.json();
+        if (!d.total) { wrap.style.display = 'none'; return; }
+
+        wrap.style.display = 'block';
+        const pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+        bar.style.width = pct + '%';
+        if (d.done) {
+            text.textContent = `RHEL-Melder-Backfill abgeschlossen: ${d.processed}/${d.total} verarbeitet, ${d.updated} mit externem Credit.`;
+            bar.style.background = 'var(--neon-cyan)';
+        } else if (d.running) {
+            text.textContent = `RHEL-Melder-Backfill läuft: ${d.processed}/${d.total} verarbeitet (${pct}%), ${d.remaining} verbleibend.`;
+        } else {
+            wrap.style.display = 'none';
+        }
+    } catch (e) {
+        // still nichts anzeigen bei Netzwerkfehlern, kein Alarm noetig fuer eine reine Fortschrittsanzeige
+    }
+}
+
+/* ─── Event-Listener ────────────────────────────────────────────────────────── */
+document.getElementById('btn-generate').addEventListener('click', startGeneration);
+document.getElementById('btn-refresh-models').addEventListener('click', loadModels);
+document.getElementById('btn-save-default-model').addEventListener('click', saveDefaultModel);
+document.getElementById('btn-cve-trend').addEventListener('click', startCveTrendReport);
+document.getElementById('btn-cve-manager').addEventListener('click', startCveManagerReport);
+
+pollRhelCreditProgress();
+setInterval(pollRhelCreditProgress, 20000);
+
+/* ─── Report-Aktionen ──────────────────────────────────────────────────────── */
+async function deleteReport(name, btn) {
+    if (!confirm(`Bericht "${name}" wirklich löschen?`)) return;
+    btn.disabled = true;
+    try {
+        const r = await fetch(`${BACKEND}/api/reports/${encodeURIComponent(name)}/delete`, {method: 'POST'});
+        const d = await r.json();
+        if (d.ok) {
+            document.getElementById(`report-row-${name}`)?.remove();
+        } else {
+            alert(`Fehler: ${d.error}`);
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert(`Fehler: ${e.message}`);
+        btn.disabled = false;
+    }
+}
+
+async function archiveReport(name, btn) {
+    btn.disabled = true;
+    try {
+        const r = await fetch(`${BACKEND}/api/reports/${encodeURIComponent(name)}/archive`, {method: 'POST'});
+        const d = await r.json();
+        if (d.ok) {
+            const row = document.getElementById(`report-row-${name}`);
+            if (row) {
+                row.style.opacity = '0.4';
+                row.querySelector('.pg-report-name').textContent += ' [archiviert]';
+                row.querySelectorAll('button').forEach(b => b.disabled = true);
+            }
+        } else {
+            alert(`Fehler: ${d.error}`);
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert(`Fehler: ${e.message}`);
+        btn.disabled = false;
+    }
+}
+
+/* ─── Dark Mode (wie auf anderen Seiten) ───────────────────────────────────── */
+document.querySelector('.nav-icons .fa-moon')?.parentElement?.addEventListener('click', () => {
+    document.body.classList.toggle('light-mode');
+});
+
+/* ─── Initialisierung ───────────────────────────────────────────────────────── */
+(async () => {
+    const ok = await checkBackend();
+    if (ok) {
+        await Promise.all([loadModels(), loadReports()]);
+    }
+})();
+</script>
+
+</body>
+</html>

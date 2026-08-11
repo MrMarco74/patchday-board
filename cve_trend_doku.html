@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVE-Trend-Report — Methodik &amp; Datengrundlage</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb; --page: #f9f9f7; --text-primary: #0b0b0b;
+    --text-secondary: #52514e; --text-muted: #898781; --grid: #e1e0d9;
+    --border: rgba(11,11,11,0.10); --critical: #d03b3b; --high: #ec835a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark; --surface-1: #1a1a19; --page: #0d0d0d; --text-primary: #ffffff;
+      --text-secondary: #c3c2b7; --text-muted: #898781; --grid: #2c2c2a;
+      --border: rgba(255,255,255,0.10);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark; --surface-1: #1a1a19; --page: #0d0d0d; --text-primary: #ffffff;
+    --text-secondary: #c3c2b7; --text-muted: #898781; --grid: #2c2c2a;
+    --border: rgba(255,255,255,0.10);
+  }
+  body { margin: 0; background: var(--page); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-root {
+    width: 80%; margin: 32px auto; padding: 28px 32px 36px; background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 12px; color: var(--text-primary); line-height: 1.55;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { font-size: 13px; color: var(--text-secondary); margin: 0 0 28px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 28px 0 8px; padding-top: 4px; border-top: 1px solid var(--grid); padding-top: 16px; }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  p, li { font-size: 13.5px; color: var(--text-secondary); }
+  code { background: var(--grid); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; color: var(--text-primary); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--grid); color: var(--text-secondary); }
+  th { color: var(--text-muted); font-weight: 500; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.crit { background: color-mix(in srgb, var(--critical) 18%, transparent); color: var(--critical); }
+  .badge.high { background: color-mix(in srgb, var(--high) 18%, transparent); color: var(--high); }
+  .note { background: var(--grid); border-radius: 8px; padding: 10px 14px; font-size: 12.5px; color: var(--text-secondary); margin: 10px 0; }
+  a { color: var(--text-primary); }
+  .back { display: inline-block; margin-bottom: 20px; font-size: 13px; color: var(--text-secondary); }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .theme-toggle {
+    flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-secondary); font-size: 15px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<div class="viz-root">
+  <div class="header-row">
+    <a class="back" href="/" target="_blank" rel="noopener">&larr; zurück zum Chart</a>
+    <button class="theme-toggle" id="theme-toggle" title="Dark/Light Mode" aria-label="Farbschema umschalten"></button>
+  </div>
+  <h1>CVE-Trend-Report — Methodik &amp; Datengrundlage</h1>
+  <p class="subtitle">Erläutert, wie die Wochenstatistik neuer HIGH/CRITICAL CVEs zustande kommt, welche Grenzen sie hat und wie die "auffällige Woche"-Markierung berechnet wird.</p>
+
+  <h2>Datenquelle</h2>
+  <p>Alle Zahlen stammen aus aggregierten Security Feeds (Microsoft MSRC, Red Hat CSAF/RHSA, NVD, OSV, GHSA). Der Endpoint liefert bereits deduplizierte, nach Woche aggregierte Daten inkl. Einzel-CVE-Liste pro Woche für den Drilldown.</p>
+
+  <h2>Ist das an meine Umgebung/meinen Asset-Bestand gekoppelt?</h2>
+  <p><strong>Nein.</strong> Dieser Report ist eine neutrale, umgebungsunabhängige Auswertung des öffentlichen CVE-Geschehens.</p>
+  <ul>
+    <li><strong>Öffentlicher CVE-/Advisory-Strom</strong> (Tabelle <code>findings</code>, Basis dieses Reports):
+    wird durch regelmäßige Bulk-Abrufe befüllt — NVD liefert alle weltweit neu veröffentlichten/aktualisierten
+    Critical/High-CVEs eines Zeitfensters, MSRC den kompletten öffentlichen CVRF-Feed der letzten ~3 Monate,
+    RHEL die neuesten öffentlichen CSAF-Advisories. Alles ungefiltert nach Produkt oder Vendor — es zählt nur
+    die Schwere, nicht ob das Produkt bei uns im Einsatz ist.</li>
+    <li><strong>Intern gescannte Funde</strong> (Tabellen <code>assets</code>, <code>asset_findings</code>,
+    <code>host_snapshots</code>): komplett separate Tabellen für konkrete Treffer auf tatsächlich erfassten Hosts.
+    Der <code>/stats/cve-weekly</code>-Endpoint verknüpft diese Tabellen an keiner Stelle — es fließt also nichts
+    aus dem eigenen Scan-Bestand in diesen Report ein.</li>
+  </ul>
+  <div class="note">
+    Einzige Ausnahme: Der RHEL-CSAF/VEX-Ingest-Schritt läuft nur, wenn mindestens ein RHEL-artiges Asset
+    (RHEL/CentOS/Rocky/AlmaLinux/Fedora/Oracle Linux) im Bestand registriert ist — das ist aber nur ein
+    Ein/Aus-Schalter für die gesamte Red-Hat-Quelle, keine Filterung einzelner CVEs. Läuft die Quelle, werden
+    trotzdem alle öffentlichen Red-Hat-Advisories importiert, nicht nur die zu tatsächlich installierten Paketen.
+  </div>
+
+  <h2>Was zählt als "neuer" CVE?</h2>
+  <p>Maßgeblich ist das <code>published_date</code> des jeweiligen Advisories/Feeds — nicht der Zeitpunkt, zu dem
+  CyberPulse den Datensatz eingelesen hat (<code>discovered_at</code>). Ein CVE landet also in der Woche, in der es
+  von der jeweiligen Quelle (Vendor, NVD, o.ä.) tatsächlich veröffentlicht wurde.</p>
+
+  <h2>Severity-Zuordnung</h2>
+  <table>
+    <tr><th>Kategorie im Chart</th><th>Zugrunde liegende Werte</th></tr>
+    <tr><td><span class="badge crit">Critical</span></td><td><code>severity = Critical</code></td></tr>
+    <tr><td><span class="badge high">High</span></td><td><code>severity = High</code> oder <code>Important</code> — Red Hat benennt seine High-Advisories "Important", wird hier gleichgesetzt</td></tr>
+  </table>
+  <p>Medium/Moderate/Low/Info werden nicht gezählt — <strong>außer</strong> Medium kann optional über den Schalter
+  "Medium anzeigen" zusätzlich im Hauptbalken eingeblendet werden. Das ist rein additiv: Medium-CVEs fließen
+  <em>nicht</em> in Gesamtsumme, Schwemme-Schwellenwert, gleitenden Durchschnitt oder die Vendor-/Melder-Aufschlüsselung
+  ein — diese bleiben bewusst auf Critical/High beschränkt, damit die "Schwemme"-Kennzahl stabil bleibt, egal ob
+  der Schalter aktiv ist.</p>
+
+  <h2>Deduplizierung</h2>
+  <p>Dieselbe CVE-ID taucht in den Rohdaten oft mehrfach auf — am häufigsten bei Red Hat, das pro betroffener
+  Produktversion (RHEL 7/8/9 etc.) ein eigenes Advisory mit derselben CVE-ID veröffentlicht. Ohne Deduplizierung
+  wären die Wochenzahlen massiv überhöht. CyberPulse dedupliziert serverseitig nach <code>cve_id</code>:</p>
+  <ul>
+    <li><strong>Datum:</strong> die früheste <code>published_date</code> über alle Duplikate zählt.</li>
+    <li><strong>Severity:</strong> die höchste Einstufung über alle Duplikate zählt (Critical schlägt High).</li>
+    <li><strong>Vendor-Tags:</strong> werden über alle Duplikate hinweg vereinigt — ein CVE kann z.B. sowohl
+    <code>redhat</code> als auch <code>microsoft</code> tragen, wenn beide Hersteller dazu ein Advisory veröffentlicht haben.</li>
+  </ul>
+
+  <h2>Vendor-Filter: Datenlage &amp; Grenzen</h2>
+  <table>
+    <tr><th>Vendor</th><th>Erkennungsmethode</th><th>Verlässlichkeit</th></tr>
+    <tr><td>RedHat</td><td>Feed-Quelle <code>source = rhel</code></td><td>Direkter Feed — vollständig</td></tr>
+    <tr><td>Microsoft</td><td>Feed-Quelle <code>source = msrc</code></td><td>Direkter Feed — vollständig</td></tr>
+    <tr><td>Azure</td><td>Keyword <code>"azure"</code> in Produkt/Zusammenfassung/Vendor-Freitext</td><td>Unvollständig — kein eigener Azure-Security-Advisory-Feed angebunden</td></tr>
+    <tr><td>GKE</td><td>Keyword <code>"gke"</code> / <code>"google kubernetes engine"</code></td><td>Unvollständig — kein eigener GCP-Security-Bulletin-Feed angebunden, sehr geringe Trefferzahl</td></tr>
+  </table>
+  <div class="note">
+    RedHat und Microsoft beruhen auf dedizierten Vendor-Feeds und sind vollständig. Azure und GKE gibt es in
+    CyberPulse aktuell nicht als eigene Quelle — Treffer entstehen nur, wenn der Begriff zufällig im Produktnamen
+    oder in der CVE-Beschreibung eines anderen Feeds (z.B. eines RHEL- oder NVD-Eintrags) auftaucht. Die Zahlen
+    für Azure/GKE sind entsprechend als <strong>Untergrenze</strong>, nicht als vollständige Erfassung zu lesen.
+    Für belastbare Azure/GKE-Zahlen müsste ein dedizierter Feed (Azure Security Advisories, GCP Security Bulletins)
+    zusätzlich angebunden werden.
+  </div>
+
+  <h2>Threat-Intelligence-Anreicherung im Drilldown</h2>
+  <p>Jeder CVE-Eintrag im Drilldown trägt zusätzlich zur Severity eine Reihe von Signalen, die beantworten sollen:
+  <em>Ist das wahrscheinlich per Fernzugriff ausnutzbar, wird es aktiv angegriffen, und wie dringend ist es wirklich?</em>
+  Diese Felder werden von CyberPulse ohnehin für andere Zwecke berechnet/angereichert — hier werden sie erstmals
+  in den CVE-Trend-Report übernommen.</p>
+
+  <h3 style="font-size:13.5px;margin:14px 0 6px;color:var(--text-primary);">RCE / LPE</h3>
+  <p>Heuristische Klassifikation aus zwei Quellen: dem CVSS-Vektor (z.B. <code>AV:N</code> + hohe Confidentiality-/
+  Integrity-Impact-Werte deutet auf Remote Code Execution) und Schlüsselwörtern in der Zusammenfassung ("remote code
+  execution", "privilege escalation" u.ä.). Eine Heuristik, kein CVE-Programm-Attribut — Grenzfälle sind möglich,
+  aber deutlich informativer als reine CVSS-Zahl allein.</p>
+
+  <h3 style="font-size:13.5px;margin:14px 0 6px;color:var(--text-primary);">EPSS, KEV, Exploit-Verfügbarkeit</h3>
+  <table>
+    <tr><th>Signal</th><th>Bedeutung</th><th>Quelle</th></tr>
+    <tr><td>EPSS-Score</td><td>Modellierte Wahrscheinlichkeit (0–1), dass die CVE in den nächsten 30 Tagen tatsächlich ausgenutzt wird</td><td>FIRST.org EPSS</td></tr>
+    <tr><td>KEV</td><td>Steht auf CISAs "Known Exploited Vulnerabilities"-Liste — nachweislich bereits aktiv ausgenutzt</td><td>CISA KEV-Katalog</td></tr>
+    <tr><td>Exploit verfügbar</td><td>Öffentlicher Exploit-Code oder ein Metasploit-Modul existiert</td><td>ExploitDB / Metasploit-Framework</td></tr>
+  </table>
+
+  <h3 style="font-size:13.5px;margin:14px 0 6px;color:var(--text-primary);">SSVC-Priorisierung</h3>
+  <p>Statt nur auf den CVSS-Score zu schauen, berechnet CyberPulse zusätzlich eine Priorisierung nach dem
+  <strong>SSVC-Entscheidungsbaum</strong> (Stakeholder-Specific Vulnerability Categorization, CISA-Coordinator-Variante),
+  der Exploitation-Status, Automatisierbarkeit und technischen Impact kombiniert:</p>
+  <table>
+    <tr><th>Stufe</th><th>Bedeutung</th></tr>
+    <tr><td><span class="badge crit">Act</span></td><td>Aktiv ausgenutzt (KEV/GreyNoise-Scan-Aktivität) und hoher Impact/automatisierbar — sofort handeln</td></tr>
+    <tr><td><span class="badge high">Attend</span></td><td>Aktiv ausgenutzt ohne hohen Impact, oder PoC-Exploit mit hohem Impact — zeitnah einplanen</td></tr>
+    <tr><td>Track*</td><td>Kein bekannter Exploit, aber automatisierbar und hoher Impact — beobachten</td></tr>
+    <tr><td>Track</td><td>Keines der obigen Kriterien erfüllt — regulärer Patch-Zyklus reicht</td></tr>
+  </table>
+  <p>Der Filter-Chip "Nur aktiv ausgenutzt (SSVC Act/Attend)" oberhalb des Charts schränkt ausschließlich die
+  <strong>Drilldown-Liste</strong> ein, nicht den Balken selbst — die Wochensumme bleibt unverändert sichtbar.</p>
+
+  <h3 style="font-size:13.5px;margin:14px 0 6px;color:var(--text-primary);">CWE &amp; OWASP Top 10 (2021)</h3>
+  <p>Die primäre CWE-ID (z.B. <code>CWE-89</code> — SQL-Injection) wird aus dem <code>weaknesses</code>-Feld der
+  NVD-API extrahiert und über eine statische, öffentlich von OWASP dokumentierte Zuordnungstabelle auf eine der
+  zehn OWASP-Top-10-2021-Kategorien gemappt (z.B. "A03:2021 - Injection"). Fehlt die CWE-ID, wird kein
+  OWASP-Tag angezeigt statt eines irreführenden "unbekannt".</p>
+  <div class="note">
+    <strong>Bewusste Limitierung:</strong> Historische CVEs erhalten die CWE-ID erst, sobald sie durch einen
+    regulären NVD-Sync erneut abgerufen werden — kein rückwirkender Massen-Backfill über den gesamten Bestand
+    (das würde gegen NVDs Rate-Limits laufen). Die Abdeckung wächst organisch mit jedem Sync-Lauf.
+  </div>
+
+  <h2>"Auffällige Woche" — wie wird die Schwelle berechnet?</h2>
+  <p>Über alle Wochen im Betrachtungszeitraum werden Mittelwert (Ø) und Standardabweichung (σ) der wöchentlichen
+  Gesamtzahl gebildet. Eine Woche gilt als auffällig, wenn ihre Zahl über <code>Ø + 1,5σ</code> liegt — ein einfacher,
+  nachvollziehbarer Ausreißer-Test, kein statistisches Anomalie-Modell. Bei aktivem Vendor-Filter wird Ø/σ neu aus
+  den gefilterten Wochenwerten berechnet, nicht aus der Gesamtmenge.</p>
+  <p>Die gestrichelte Linie im Chart zeigt zusätzlich den gleitenden 4-Wochen-Durchschnitt, um kurzfristige
+  Ausreißer von einem echten Trendwechsel zu unterscheiden.</p>
+
+  <h2>Melder-Herkunft: Hersteller-intern vs. extern gemeldet</h2>
+  <p>Der Balken unter der Wochenstatistik zeigt, ob eine Schwachstelle laut Advisory von einer externen Person/Firma
+  gemeldet wurde (Credit-/Acknowledgments-Eintrag vorhanden) oder ohne einen solchen Eintrag im Feed steht
+  (gewertet als "herstellerintern gefunden"). Das ist <strong>nur für Microsoft (MSRC) und RedHat (RHEL)</strong>
+  auswertbar — beide Feeds führen ein Credit-/Acknowledgments-Feld, alle anderen Quellen (NVD, OSV, GHSA) nicht
+  und werden als "nicht auswertbar" gezählt.</p>
+  <table>
+    <tr><th>Quelle</th><th>Herkunft der Daten</th><th>Kosten pro Abruf</th></tr>
+    <tr><td>Microsoft (MSRC)</td><td>Acknowledgments-Feld direkt im ohnehin abgerufenen Monats-CVRF-Dokument</td><td>Kein Zusatzaufwand — vollständig rückwirkend befüllt</td></tr>
+    <tr><td>RedHat (RHEL)</td><td>Acknowledgement-Feld nur über einen Einzel-Request pro CVE (<code>/cve/&lt;ID&gt;.json</code>), keine Bulk-Quelle dafür vorhanden</td><td>Läuft als gedrosselter Hintergrund-Job (~1 Request alle 1,5s) im CyberPulse-Hub nach — Wochen mit noch nicht verarbeiteten RHEL-CVEs werden als "RHEL: Backfill läuft noch" ausgewiesen</td></tr>
+  </table>
+  <div class="note">
+    "Herstellerintern gefunden" heißt: kein Credit-Eintrag im Advisory — das ist ein Indiz, kein Beweis. Manche
+    Advisories lassen Credits schlicht weg, auch wenn extern gemeldet wurde. Die Kategorie "von KI-Tools entdeckt"
+    wurde bewusst nicht umgesetzt: ein Test an echten MSRC-Daten zeigte, dass ein Keyword-Filter auf "AI" in
+    Credit-Namen fast ausschließlich Sicherheitsfirmen mit ".ai" im Markennamen trifft (z.B. "XBreach.ai"), nicht
+    tatsächlich KI-gestützte Entdeckungsmethoden — das wäre irreführend statt informativ gewesen.
+  </div>
+
+  <h2>Aktualität</h2>
+  <p>Der Report wird bei Bedarf manuell über den Patchday-Generator neu erzeugt.</p>
+</div>
+
+<script>
+(function () {
+  const THEME_KEY = 'cve-trend-theme';
+  const themeBtn = document.getElementById('theme-toggle');
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function isDark() {
+    const stamped = document.documentElement.getAttribute('data-theme');
+    if (stamped === 'dark') return true;
+    if (stamped === 'light') return false;
+    return media.matches;
+  }
+  function applyIcon() { themeBtn.textContent = isDark() ? '☀️' : '🌙'; }
+
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === 'dark' || stored === 'light') document.documentElement.setAttribute('data-theme', stored);
+  applyIcon();
+
+  themeBtn.addEventListener('click', () => {
+    const next = isDark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    applyIcon();
+  });
+  media.addEventListener('change', () => { if (!localStorage.getItem(THEME_KEY)) applyIcon(); });
+})();
+</script>
+</body>
+</html>

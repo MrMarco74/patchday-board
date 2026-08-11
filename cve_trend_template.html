@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVE-Schwemme: HIGH/CRITICAL pro Woche</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --critical:       #d03b3b;
+    --high:           #ec835a;
+    --medium:         #b8860b;
+    --flag-dot:       #d03b3b;
+    --v-redhat:       #2a78d6;
+    --v-microsoft:    #008300;
+    --v-azure:        #e87ba4;
+    --v-gke:          #eda100;
+    --chip-bg:        #f2f1ed;
+    --disc-internal:  #0ca30c;
+    --disc-external:  #2a78d6;
+    --disc-pending:   #fab219;
+    --ssvc-track-star: #a6790f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --critical:       #d03b3b;
+      --high:           #ec835a;
+      --medium:         #b8860b;
+      --flag-dot:       #d03b3b;
+      --v-redhat:       #3987e5;
+      --v-microsoft:    #008300;
+      --v-azure:        #d55181;
+      --v-gke:          #c98500;
+      --chip-bg:        #232322;
+      --disc-internal:  #0ca30c;
+      --disc-external:  #3987e5;
+      --disc-pending:   #fab219;
+      --ssvc-track-star: #a6790f;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --critical:       #d03b3b;
+    --high:           #ec835a;
+    --medium:         #b8860b;
+    --flag-dot:       #d03b3b;
+    --v-redhat:       #3987e5;
+    --v-microsoft:    #008300;
+    --v-azure:        #d55181;
+    --v-gke:          #c98500;
+    --chip-bg:        #232322;
+    --disc-internal:  #0ca30c;
+    --disc-external:  #3987e5;
+    --disc-pending:   #fab219;
+  }
+
+  body { margin: 0; background: var(--page); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-root { width: 80%; max-width: 1800px; margin: 32px auto; padding: 24px 28px 20px; background: var(--surface-1);
+              border: 1px solid var(--border); border-radius: 12px; color: var(--text-primary); }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .theme-toggle {
+    flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--chip-bg, transparent); color: var(--text-secondary); font-size: 15px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+  .subtitle { font-size: 13px; color: var(--text-secondary); margin: 0 0 4px; }
+  .subtitle a { color: var(--text-secondary); }
+
+  .stat-row { display: flex; gap: 28px; flex-wrap: wrap; margin: 18px 0 20px; }
+  .stat-tile .label { font-size: 12px; color: var(--text-secondary); }
+  .stat-tile .value { font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .stat-tile .delta { font-size: 13px; font-weight: 600; }
+  .delta.up-bad { color: var(--critical); }
+  .delta.up-good { color: #006300; }
+
+  .legend { display: flex; gap: 18px; align-items: center; font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .swatch.line { width: 14px; height: 2px; border-radius: 0; background: var(--text-muted); }
+  .swatch.flag { width: 8px; height: 8px; border-radius: 50%; background: var(--flag-dot); }
+
+  .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .filter-label { font-size: 12px; color: var(--text-muted); margin-right: 2px; }
+  .chip {
+    display: flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 500;
+    color: var(--text-secondary); background: var(--chip-bg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px 12px 5px 9px; cursor: pointer; user-select: none;
+  }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dot-color, currentColor); flex: none; }
+  .chip[data-active="true"] { color: var(--text-primary); border-color: var(--dot-color); background: color-mix(in srgb, var(--dot-color) 14%, var(--surface-1)); }
+  .chip .caveat { font-size: 10px; color: var(--text-muted); font-weight: 400; }
+  .chip[data-active="true"] .caveat { color: var(--text-secondary); }
+  .filter-reset { font-size: 12px; color: var(--text-muted); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 4px 2px; }
+
+  .chart-wrap { position: relative; overflow-x: auto; }
+  svg { display: block; overflow: visible; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+  .axis-label { fill: var(--text-muted); font-size: 11px; }
+  .bar-crit { fill: var(--critical); }
+  .bar-high { fill: var(--high); }
+  .avg-line { stroke: var(--text-muted); stroke-width: 2; fill: none; stroke-dasharray: 4 3; }
+  .avg-label { fill: var(--text-secondary); font-size: 10.5px; }
+  .flag-dot { fill: var(--flag-dot); }
+  .hit-col { fill: transparent; cursor: pointer; }
+  .hit-col:hover { fill: rgba(128,128,128,0.06); }
+  .hit-col.open { fill: rgba(128,128,128,0.10); }
+
+  .tooltip {
+    position: fixed; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--text-primary);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15); opacity: 0; transition: opacity 0.08s; white-space: nowrap; z-index: 5;
+  }
+  .tooltip .t-week { font-weight: 600; margin-bottom: 4px; }
+  .tooltip .t-row { display: flex; justify-content: space-between; gap: 14px; color: var(--text-secondary); }
+  .tooltip .t-row b { color: var(--text-primary); font-weight: 600; }
+  .tooltip .t-flag { margin-top: 4px; color: var(--critical); font-weight: 600; }
+  .tooltip .t-hint { margin-top: 4px; color: var(--text-muted); font-style: italic; }
+
+  .drilldown { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; }
+  .drilldown.show { display: block; }
+  .drilldown-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--chip-bg); font-size: 13px; font-weight: 600; }
+  .drilldown-head button { font: inherit; font-size: 12px; color: var(--text-secondary); background: none; border: none; cursor: pointer; }
+  .drilldown-body { max-height: 360px; overflow-y: auto; }
+
+  .toolbar { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .toolbar button {
+    font: inherit; font-size: 12px; color: var(--text-secondary); background: transparent;
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  }
+  .toolbar button:hover { color: var(--text-primary); }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.data-table th, table.data-table td {
+    text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid);
+    font-variant-numeric: tabular-nums; color: var(--text-primary);
+  }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; }
+  table.data-table th { color: var(--text-muted); font-weight: 500; }
+  table.data-table td.flagged { color: var(--critical); font-weight: 600; }
+  table.data-table td.summary-col { text-align: left; color: var(--text-secondary); max-width: 360px; white-space: normal; }
+  table.data-table td.id-col { text-align: left; font-weight: 600; }
+  table.data-table td.id-col a { color: var(--text-primary); }
+  #weekly-table-wrap { margin-top: 14px; display: none; }
+  #weekly-table-wrap.show { display: block; }
+
+  td.threat-col { text-align: left; }
+  .threat-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .badge {
+    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid var(--border); white-space: nowrap; line-height: 1.6;
+  }
+  .badge-kev { color: var(--critical); border-color: var(--critical); background: color-mix(in srgb, var(--critical) 14%, var(--surface-1)); }
+  .badge-rce { color: var(--high); border-color: var(--high); background: color-mix(in srgb, var(--high) 14%, var(--surface-1)); }
+  .badge-lpe { color: var(--text-secondary); }
+  .badge-exploit { color: var(--v-redhat); border-color: var(--v-redhat); background: color-mix(in srgb, var(--v-redhat) 14%, var(--surface-1)); }
+  .badge-owasp { color: var(--text-secondary); }
+  .ssvc-pill { color: #fff; }
+  .ssvc-act    { background: var(--critical); }
+  .ssvc-attend { background: var(--high); }
+  .ssvc-track-star { background: var(--ssvc-track-star); }
+  .ssvc-track  { background: var(--text-muted); }
+
+</style>
+</head>
+<body>
+
+<div class="viz-root">
+  <div class="header-row">
+    <div>
+      <h1>Neue HIGH/CRITICAL CVEs pro Woche</h1>
+      <p class="subtitle">Quelle: CyberPulse Hub (<code>/stats/cve-weekly</code>) · dedupliziert nach CVE-ID · <span id="range-label"></span> · <a href="cve_trend_doku.html" target="_blank" rel="noopener">Methodik &amp; Datengrundlage</a></p>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" title="Dark/Light Mode" aria-label="Farbschema umschalten"></button>
+  </div>
+
+  <div class="stat-row" id="stat-row"></div>
+
+  <div class="legend">
+    <span class="item"><span class="swatch" style="background:var(--critical)"></span> Critical</span>
+    <span class="item"><span class="swatch" style="background:var(--high)"></span> High</span>
+    <span class="item" id="legend-medium" style="display:none;"><span class="swatch" style="background:var(--medium)"></span> Medium</span>
+    <span class="item"><span class="swatch line"></span> Ø 4-Wochen-Schnitt</span>
+    <span class="item"><span class="swatch flag"></span> Auffällige Woche (&gt; Ø + 1.5σ)</span>
+  </div>
+  <div class="filter-bar" id="severity-bar"></div>
+  <div class="legend" style="margin-top:-6px;">
+    <span class="filter-label">Balken rechts = Melder-Herkunft:</span>
+    <span class="item"><span class="swatch" style="background:var(--disc-internal)"></span> Intern gefunden</span>
+    <span class="item"><span class="swatch" style="background:var(--disc-external)"></span> Extern gemeldet</span>
+    <span class="item"><span class="swatch" style="background:var(--disc-pending)"></span> RHEL ausstehend</span>
+    <span class="item"><span class="swatch" style="background:var(--text-muted)"></span> Nicht auswertbar</span>
+    <span class="item" style="opacity:.75;">(bezieht sich nur auf High/Critical, wie die Wochensumme links)</span>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <span class="filter-label">Vendor:</span>
+  </div>
+
+  <div class="filter-bar" id="zoom-bar">
+    <span class="filter-label">Zeitraum:</span>
+  </div>
+
+  <div class="filter-bar" id="threat-bar">
+    <span class="filter-label">Priorisierung (wirkt nur auf die CVE-Liste unten):</span>
+  </div>
+
+  <div class="chart-wrap">
+    <svg id="chart"></svg>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+
+  <div class="drilldown" id="drilldown">
+    <div class="drilldown-head">
+      <span id="drilldown-title"></span>
+      <button id="drilldown-close">Schließen ✕</button>
+    </div>
+    <div class="drilldown-body">
+      <table class="data-table" id="drilldown-table">
+        <thead><tr><th>CVE</th><th>Severity</th><th>Score</th><th>Produkt</th><th class="summary-col">Zusammenfassung</th><th>Quelle</th><th class="threat-col">Threat</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="toolbar"><button id="toggle-table">Als Tabelle anzeigen</button></div>
+  <div id="weekly-table-wrap">
+    <table class="data-table" id="data-table">
+      <thead><tr id="data-table-head"><th>Woche</th><th>Beginn</th><th>Critical</th><th>High</th><th>Gesamt</th><th>Ø 4W</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+const RAW = __DATA_JSON__;
+
+const VENDOR_DEFS = [
+  { key: 'redhat',    label: 'RedHat',    color: 'var(--v-redhat)',    caveat: null },
+  { key: 'microsoft', label: 'Microsoft', color: 'var(--v-microsoft)', caveat: null },
+  { key: 'azure',     label: 'Azure',     color: 'var(--v-azure)',     caveat: 'Keyword-basiert, unvollständig' },
+  { key: 'gke',       label: 'GKE',       color: 'var(--v-gke)',       caveat: 'Keyword-basiert, unvollständig' },
+];
+
+const root = document.currentScript.previousElementSibling;
+const W = 1500, H = 560, padL = 56, padR = 20, padT = 20, padB = 40;
+const plotW = W - padL - padR, plotH = H - padT - padB;
+const svgNS = 'http://www.w3.org/2000/svg';
+
+let activeVendors = new Set();
+let openWeekIndex = null;
+let zoomWeeks = null; // null = alle Wochen, sonst Zahl = "letzte N Wochen"
+let showMedium = false;
+let onlyActionable = false; // Drilldown-Liste auf SSVC Act/Attend beschränken
+
+const SSVC_LABELS = { Act: 'Act', Attend: 'Attend', 'Track*': 'Track*', Track: 'Track' };
+const SSVC_CLASS = { Act: 'ssvc-act', Attend: 'ssvc-attend', 'Track*': 'ssvc-track-star', Track: 'ssvc-track' };
+
+function el(tag, attrs) {
+  const e = document.createElementNS(svgNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function _discoveryCategoryOf(c) {
+  // Jede CVE zählt in genau EINE Kategorie (keine Mehrfachzählung auch wenn dieselbe
+  // CVE mehrere Discovery-Tags traegt, z.B. weil sie sowohl bei MSRC als auch bei RHEL
+  // auftaucht). Prioritaet: extern > intern > ausstehend > n/a.
+  const tags = c.discovery_tags || [];
+  if (tags.includes('microsoft_external') || tags.includes('redhat_external')) return 'external';
+  if (tags.includes('microsoft_internal') || tags.includes('redhat_internal')) return 'internal';
+  if (tags.includes('redhat_pending')) return 'pending';
+  return 'na';
+}
+
+function _discoveryBreakdown(cves) {
+  // Bezieht sich bewusst nur auf High/Critical (wie server-seitig in by_discovery).
+  const disc = { internal: 0, external: 0, pending: 0, na: 0 };
+  cves.forEach(c => { if (c.severity !== 'medium') disc[_discoveryCategoryOf(c)]++; });
+  return disc;
+}
+
+function deriveWeeks() {
+  if (activeVendors.size === 0) {
+    return RAW.map(w => ({ ...w, cves: w.cves, disc: _discoveryBreakdown(w.cves) }));
+  }
+  const derived = RAW.map(w => {
+    const filteredCves = w.cves.filter(c => c.vendor_tags.some(t => activeVendors.has(t)));
+    const critical = filteredCves.filter(c => c.severity === 'critical').length;
+    const high = filteredCves.filter(c => c.severity === 'high').length;
+    const medium = filteredCves.filter(c => c.severity === 'medium').length;
+    const highCrit = filteredCves.filter(c => c.severity !== 'medium');
+    return {
+      ...w, cves: filteredCves, critical, high, medium, total: critical + high,
+      disc: _discoveryBreakdown(filteredCves),
+      rce_count: highCrit.filter(c => c.is_rce).length,
+      kev_count: highCrit.filter(c => c.is_kev).length,
+      exploit_available_count: highCrit.filter(c => c.has_exploit || c.has_metasploit).length,
+      ssvc_act_count: highCrit.filter(c => c.ssvc_decision === 'Act' || c.ssvc_decision === 'Attend').length,
+    };
+  });
+  const totals = derived.map(w => w.total);
+  const mean = totals.reduce((a, b) => a + b, 0) / (totals.length || 1);
+  const variance = totals.reduce((a, b) => a + (b - mean) ** 2, 0) / (totals.length || 1);
+  const threshold = mean + 1.5 * Math.sqrt(variance);
+  derived.forEach((w, i) => {
+    const window = totals.slice(Math.max(0, i - 3), i + 1);
+    w.rolling_avg_4w = Math.round((window.reduce((a, b) => a + b, 0) / window.length) * 10) / 10;
+    w.flagged = w.total > threshold;
+  });
+  return derived;
+}
+
+// ---- filter chips ----
+const filterBar = document.getElementById('filter-bar');
+VENDOR_DEFS.forEach(v => {
+  const chip = document.createElement('button');
+  chip.className = 'chip';
+  chip.dataset.active = 'false';
+  chip.style.setProperty('--dot-color', v.color);
+  chip.innerHTML = `<span class="dot"></span>${v.label}${v.caveat ? `<span class="caveat">ⓘ</span>` : ''}`;
+  chip.title = v.caveat || `Nur ${v.label}-CVEs anzeigen`;
+  chip.addEventListener('click', () => {
+    if (activeVendors.has(v.key)) activeVendors.delete(v.key); else activeVendors.add(v.key);
+    chip.dataset.active = activeVendors.has(v.key) ? 'true' : 'false';
+    render();
+  });
+  filterBar.appendChild(chip);
+});
+const resetBtn = document.createElement('button');
+resetBtn.className = 'filter-reset';
+resetBtn.textContent = 'Alle zurücksetzen';
+resetBtn.addEventListener('click', () => {
+  activeVendors.clear();
+  filterBar.querySelectorAll('.chip').forEach(c => c.dataset.active = 'false');
+  render();
+});
+filterBar.appendChild(resetBtn);
+
+// ---- zoom (Zeitraum) chips ----
+const zoomBar = document.getElementById('zoom-bar');
+const ZOOM_PRESETS = [
+  { key: 8, label: '8W' },
+  { key: 13, label: '13W' },
+  { key: 26, label: '26W' },
+  { key: null, label: 'Alle' },
+];
+ZOOM_PRESETS.forEach(p => {
+  const chip = document.createElement('button');
+  chip.className = 'chip';
+  chip.style.setProperty('--dot-color', 'var(--text-primary)');
+  chip.textContent = p.label;
+  chip.dataset.active = (zoomWeeks === p.key) ? 'true' : 'false';
+  chip.addEventListener('click', () => {
+    zoomWeeks = p.key;
+    zoomBar.querySelectorAll('.chip').forEach(c => c.dataset.active = 'false');
+    chip.dataset.active = 'true';
+    openWeekIndex = null;
+    render();
+  });
+  zoomBar.appendChild(chip);
+});
+zoomBar.children[zoomBar.children.length - 1].dataset.active = 'true'; // "Alle" ist Default
+
+// ---- Medium-Toggle: alternativ im Hauptbalken mit einblenden ----
+const severityBar = document.getElementById('severity-bar');
+const mediumChip = document.createElement('button');
+mediumChip.className = 'chip';
+mediumChip.dataset.active = 'false';
+mediumChip.style.setProperty('--dot-color', 'var(--medium)');
+mediumChip.innerHTML = `<span class="dot"></span>Medium anzeigen`;
+mediumChip.title = 'Medium-CVEs zusätzlich im Hauptbalken anzeigen (fließt nicht in Schwemme-Erkennung/Ø ein)';
+mediumChip.addEventListener('click', () => {
+  showMedium = !showMedium;
+  mediumChip.dataset.active = showMedium ? 'true' : 'false';
+  document.getElementById('legend-medium').style.display = showMedium ? '' : 'none';
+  render();
+});
+severityBar.appendChild(mediumChip);
+
+// ---- Threat-Filter: Drilldown-Liste auf SSVC Act/Attend beschränken ----
+const threatBar = document.getElementById('threat-bar');
+const actionableChip = document.createElement('button');
+actionableChip.className = 'chip';
+actionableChip.dataset.active = 'false';
+actionableChip.style.setProperty('--dot-color', 'var(--critical)');
+actionableChip.innerHTML = `<span class="dot"></span>Nur aktiv ausgenutzt (SSVC Act/Attend)`;
+actionableChip.title = 'CVE-Liste im Drilldown auf SSVC-Priorität Act/Attend beschränken (KEV/GreyNoise-Aktivität oder PoC+hoher Impact). Wirkt nicht auf den Balken selbst.';
+actionableChip.addEventListener('click', () => {
+  onlyActionable = !onlyActionable;
+  actionableChip.dataset.active = onlyActionable ? 'true' : 'false';
+  if (openWeekIndex !== null) openDrilldown(deriveWeeksForZoom()[openWeekIndex]);
+});
+threatBar.appendChild(actionableChip);
+
+function deriveWeeksForZoom() {
+  const FULL_DATA = deriveWeeks();
+  return zoomWeeks ? FULL_DATA.slice(-zoomWeeks) : FULL_DATA;
+}
+
+// ---- static elements created once ----
+const svg = document.getElementById('chart');
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+svg.setAttribute('width', '100%');
+svg.setAttribute('height', H);
+const tooltip = document.getElementById('tooltip');
+const themeToggleEl = document.getElementById('theme-toggle');
+const statRow = document.getElementById('stat-row');
+
+function tile(label, value, deltaHtml, trendPositive) {
+  const div = document.createElement('div');
+  div.className = 'stat-tile';
+  div.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>${deltaHtml ? `<div class="delta ${trendPositive ? 'up-bad' : 'up-good'}">${deltaHtml}</div>` : ''}`;
+  return div;
+}
+
+function render() {
+  const FULL_DATA = deriveWeeks();
+  const DATA = zoomWeeks ? FULL_DATA.slice(-zoomWeeks) : FULL_DATA;
+  svg.innerHTML = '';
+
+  const maxTotal = Math.max(1, ...DATA.map(d => d.total + (showMedium ? (d.medium || 0) : 0)));
+  const yMax = Math.ceil(maxTotal / 500) * 500 || 10;
+  const n = DATA.length;
+  const bandW = plotW / n;
+  const barW = Math.min(20, bandW * 0.27);
+  const pairGap = 3;
+  const gap = 2;
+
+  function yFor(v) { return padT + plotH - (v / yMax) * plotH; }
+  function xFor(i) { return padL + i * bandW + bandW / 2; }
+  function xForSeverity(i) { return xFor(i) - pairGap / 2 - barW; }
+  function xForDiscovery(i) { return xFor(i) + pairGap / 2; }
+
+  function drawStack(xLeft, segments, week) {
+    // segments: [{value, cssClass|color, filter?, label?}] von unten nach oben,
+    // gleiche Rundung/Gap-Regeln wie das Haupt-Chart. Mit filter+week: Klick auf
+    // das Segment öffnet den Drilldown gefiltert auf genau diesen Ausschnitt.
+    const yBase = yFor(0);
+    let cumulative = 0;
+    segments.forEach((seg, idx) => {
+      if (seg.value <= 0) return;
+      const yTop = yFor(cumulative + seg.value);
+      const yBottom = idx === 0 ? yBase : yFor(cumulative) - gap;
+      const h = Math.max(0, yBottom - yTop);
+      const attrs = { x: xLeft, y: yTop, width: barW, height: h, rx: 4, ry: 4 };
+      if (seg.cssClass) attrs.class = seg.cssClass; else attrs.fill = seg.color;
+      if (seg.opacity != null) attrs['fill-opacity'] = seg.opacity;
+      const rectEl = el('rect', attrs);
+      svg.appendChild(rectEl);
+      let squareEl = null;
+      if (h > 4) {
+        const squareAttrs = { x: xLeft, y: yBottom - Math.min(4, h), width: barW, height: Math.min(4, h) };
+        if (seg.cssClass) squareAttrs.class = seg.cssClass; else squareAttrs.fill = seg.color;
+        if (seg.opacity != null) squareAttrs['fill-opacity'] = seg.opacity;
+        squareEl = el('rect', squareAttrs);
+        svg.appendChild(squareEl);
+      }
+      if (seg.filter && week) {
+        [rectEl, squareEl].filter(Boolean).forEach(node => {
+          node.style.cursor = 'pointer';
+          node.addEventListener('click', () => openDrilldown(week, seg.filter, seg.label));
+        });
+      }
+      cumulative += seg.value;
+    });
+  }
+
+  const ySteps = 4;
+  for (let s = 0; s <= ySteps; s++) {
+    const v = (yMax / ySteps) * s;
+    const y = yFor(v);
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y, class: s === 0 ? 'baseline' : 'gridline' }));
+    const t = el('text', { x: padL - 8, y: y + 3, class: 'axis-label', 'text-anchor': 'end' });
+    t.textContent = Math.round(v).toLocaleString('de-DE');
+    svg.appendChild(t);
+  }
+
+  DATA.forEach((d, i) => {
+    const hit = el('rect', { x: padL + i * bandW, y: padT, width: bandW, height: plotH, class: 'hit-col' + (openWeekIndex === i ? ' open' : '') });
+    hit.addEventListener('mousemove', () => {
+      tooltip.style.opacity = 1;
+      const disc = d.disc || { internal: 0, external: 0, pending: 0, na: 0 };
+      const dRow = (label, v) => `<div class="t-row"><span>${label}</span><b>${v}</b></div>`;
+      tooltip.innerHTML = `
+        <div class="t-week">${d.week_label} (ab ${d.week_start})</div>
+        <div class="t-row"><span>Critical</span><b>${d.critical}</b></div>
+        <div class="t-row"><span>High</span><b>${d.high}</b></div>
+        ${showMedium ? `<div class="t-row"><span>Medium</span><b>${d.medium || 0}</b></div>` : ''}
+        <div class="t-row"><span>Gesamt</span><b>${d.total}</b></div>
+        <div class="t-row"><span>Ø 4-Wochen</span><b>${d.rolling_avg_4w}</b></div>
+        ${d.flagged ? '<div class="t-flag">⚠ Auffällig — deutlich über Trend</div>' : ''}
+        <div class="t-week" style="margin-top:6px;">Priorisierung (Critical/High)</div>
+        ${dRow('KEV (aktiv ausgenutzt)', d.kev_count || 0)}
+        ${dRow('RCE (heuristisch)', d.rce_count || 0)}
+        ${dRow('Exploit verfügbar', d.exploit_available_count || 0)}
+        ${dRow('SSVC Act/Attend', d.ssvc_act_count || 0)}
+        <div class="t-week" style="margin-top:6px;">Melder-Herkunft</div>
+        ${dRow('Intern gefunden', disc.internal)}
+        ${dRow('Extern gemeldet', disc.external)}
+        ${dRow('RHEL ausstehend', disc.pending)}
+        ${dRow('Nicht auswertbar', disc.na)}
+        <div class="t-hint">Klicken für CVE-Liste</div>
+      `;
+      // Fest oben rechts neben dem Dark-Mode-Button anzeigen statt dem Cursor zu
+      // folgen (position: fixed, also unabhängig vom overflow-x:auto des chart-wrap).
+      const btnRect = themeToggleEl.getBoundingClientRect();
+      const tw = tooltip.offsetWidth;
+      let left = btnRect.left - tw - 12;
+      if (left < 8) left = 8;
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = btnRect.top + 'px';
+    });
+    hit.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; });
+    hit.addEventListener('click', () => {
+      openWeekIndex = (openWeekIndex === i) ? null : i;
+      render();
+      if (openWeekIndex === i) openDrilldown(DATA[i]);
+    });
+    svg.appendChild(hit);
+  });
+
+  const isCrit = c => c.severity === 'critical';
+  const isHigh = c => c.severity === 'high';
+  const isMedium = c => c.severity === 'medium';
+  const isCat = cat => c => _discoveryCategoryOf(c) === cat;
+
+  DATA.forEach((d, i) => {
+    const severitySegments = [
+      { value: d.critical, cssClass: 'bar-crit', filter: isCrit, label: 'Critical' },
+      { value: d.high, cssClass: 'bar-high', filter: isHigh, label: 'High' },
+    ];
+    if (showMedium) severitySegments.push({ value: d.medium || 0, color: 'var(--medium)', filter: isMedium, label: 'Medium' });
+    drawStack(xForSeverity(i), severitySegments, d);
+    const disc = d.disc || { internal: 0, external: 0, pending: 0, na: 0 };
+    drawStack(xForDiscovery(i), [
+      { value: disc.internal, color: 'var(--disc-internal)', filter: isCat('internal'), label: 'Intern gefunden' },
+      { value: disc.external, color: 'var(--disc-external)', filter: isCat('external'), label: 'Extern gemeldet' },
+      { value: disc.pending,  color: 'var(--disc-pending)',  filter: isCat('pending'),  label: 'RHEL ausstehend' },
+      { value: disc.na,       color: 'var(--text-muted)',    filter: isCat('na'),       label: 'Nicht auswertbar' },
+    ], d);
+    if (d.flagged) svg.appendChild(el('circle', { cx: xFor(i), cy: yFor(d.total) - 10, r: 4, class: 'flag-dot' }));
+  });
+
+  DATA.forEach((d, i) => {
+    const t = el('text', { x: xFor(i), y: H - padB + 16, class: 'axis-label', 'text-anchor': 'middle', 'font-size': '9.5' });
+    t.textContent = 'W' + d.week_label.split('-W')[1];
+    svg.appendChild(t);
+  });
+
+  let path = '';
+  DATA.forEach((d, i) => { path += (i === 0 ? 'M' : 'L') + xFor(i) + ' ' + yFor(d.rolling_avg_4w) + ' '; });
+  svg.appendChild(el('path', { d: path, class: 'avg-line' }));
+  const lastPt = DATA[DATA.length - 1];
+  const lbl = el('text', { x: xFor(n - 1) + 6, y: yFor(lastPt.rolling_avg_4w) + 3, class: 'avg-label' });
+  lbl.textContent = 'Ø 4W';
+  svg.appendChild(lbl);
+
+  // stat tiles
+  const total = DATA.reduce((s, d) => s + d.total, 0);
+  const last4 = DATA.slice(-4).reduce((s, d) => s + d.total, 0);
+  const prev4 = DATA.slice(-8, -4).reduce((s, d) => s + d.total, 0);
+  const trend = prev4 ? ((last4 - prev4) / prev4 * 100) : 0;
+  const flaggedWeeks = DATA.filter(d => d.flagged).map(d => d.week_label);
+
+  statRow.innerHTML = '';
+  statRow.appendChild(tile('Gesamt (Zeitraum)', total.toLocaleString('de-DE')));
+  statRow.appendChild(tile('Letzte 4 Wochen', last4.toLocaleString('de-DE'), `${trend >= 0 ? '+' : ''}${trend.toFixed(0)}% vs. Vorwoche(n)`, trend > 0));
+  statRow.appendChild(tile('Auffällige Wochen', flaggedWeeks.length ? flaggedWeeks.join(', ') : 'keine'));
+
+  document.getElementById('range-label').textContent = `${DATA[0].week_label} bis ${DATA[DATA.length - 1].week_label}`;
+
+  // full table (reactive to filter)
+  document.getElementById('data-table-head').innerHTML = `<th>Woche</th><th>Beginn</th><th>Critical</th><th>High</th>${showMedium ? '<th>Medium</th>' : ''}<th>Gesamt</th><th>Ø 4W</th>`;
+  const tbody = document.querySelector('#data-table tbody');
+  tbody.innerHTML = '';
+  DATA.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${d.week_label}</td><td>${d.week_start}</td><td>${d.critical}</td><td>${d.high}</td>${showMedium ? `<td>${d.medium || 0}</td>` : ''}
+      <td class="${d.flagged ? 'flagged' : ''}">${d.total}</td><td>${d.rolling_avg_4w}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  if (openWeekIndex !== null) openDrilldown(DATA[openWeekIndex]);
+}
+
+
+function _badge(text, cssClass, title) {
+  const span = document.createElement('span');
+  span.className = cssClass ? `badge ${cssClass}` : 'badge';
+  span.textContent = text;
+  if (title) span.title = title;
+  return span;
+}
+
+function openDrilldown(week, segmentFilter, segmentLabel) {
+  // Ohne explizites Segment (Klick auf die Wochenspalte statt einen Balken-Abschnitt)
+  // Medium ausblenden, solange der Medium-Toggle aus ist — sonst würde die
+  // Gesamtliste mehr CVEs zeigen als der sichtbare Balken suggeriert.
+  let cves = segmentFilter ? week.cves.filter(segmentFilter)
+           : showMedium ? week.cves
+           : week.cves.filter(c => c.severity !== 'medium');
+  // Priorisierungs-Filter wirkt NUR auf diese Liste, nicht auf den Balken/die Wochensumme.
+  if (onlyActionable) cves = cves.filter(c => c.ssvc_decision === 'Act' || c.ssvc_decision === 'Attend');
+  const dd = document.getElementById('drilldown');
+  dd.classList.add('show');
+  const suffixParts = [];
+  if (segmentLabel) suffixParts.push(segmentLabel);
+  if (activeVendors.size) suffixParts.push('gefiltert');
+  if (onlyActionable) suffixParts.push('nur Act/Attend');
+  const suffix = suffixParts.length ? ` — ${suffixParts.join(', ')}` : '';
+  document.getElementById('drilldown-title').textContent = `${week.week_label} — ${cves.length} CVE(s)${suffix}`;
+  const tbody = document.querySelector('#drilldown-table tbody');
+  tbody.innerHTML = '';
+  const SAFE_URL = /^https?:\/\//i;
+  cves.forEach(c => {
+    const tr = document.createElement('tr');
+
+    const idCell = document.createElement('td');
+    idCell.className = 'id-col';
+    if (c.url && SAFE_URL.test(c.url)) {
+      const a = document.createElement('a');
+      a.href = c.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = c.cve_id;
+      idCell.appendChild(a);
+    } else {
+      idCell.textContent = c.cve_id;
+    }
+    tr.appendChild(idCell);
+
+    const values = [c.severity, c.score ?? '–', c.product || '', c.summary || '', c.source || ''];
+    const classes = ['', '', '', 'summary-col', ''];
+    values.forEach((v, i) => {
+      const td = document.createElement('td');
+      if (classes[i]) td.className = classes[i];
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+
+    const threatCell = document.createElement('td');
+    threatCell.className = 'threat-col';
+    const badges = document.createElement('div');
+    badges.className = 'threat-badges';
+    if (c.is_kev) badges.appendChild(_badge('KEV', 'badge-kev', 'Auf CISAs Known-Exploited-Vulnerabilities-Liste — nachweislich aktiv ausgenutzt'));
+    if (c.is_rce) badges.appendChild(_badge('RCE', 'badge-rce', 'Heuristisch als Remote Code Execution eingestuft (CVSS-Vektor + Keyword-Match)'));
+    if (c.is_lpe) badges.appendChild(_badge('LPE', 'badge-lpe', 'Heuristisch als lokale Rechteausweitung eingestuft'));
+    if (c.has_exploit || c.has_metasploit) badges.appendChild(_badge('Exploit', 'badge-exploit', 'Öffentlicher Exploit-Code oder Metasploit-Modul verfügbar (ExploitDB/Metasploit)'));
+    if (typeof c.epss_score === 'number') badges.appendChild(_badge(`EPSS ${(c.epss_score * 100).toFixed(0)}%`, '', 'Modellierte Ausnutzungswahrscheinlichkeit (FIRST.org EPSS) in den nächsten 30 Tagen'));
+    if (c.owasp_category) badges.appendChild(_badge(c.owasp_category.split(' - ')[0], 'badge-owasp', c.owasp_category + (c.cwe ? ` (${c.cwe})` : '')));
+    if (c.ssvc_decision) {
+      const ssvcPill = document.createElement('span');
+      ssvcPill.className = `badge ssvc-pill ${SSVC_CLASS[c.ssvc_decision] || 'ssvc-track'}`;
+      ssvcPill.textContent = SSVC_LABELS[c.ssvc_decision] || c.ssvc_decision;
+      ssvcPill.title = 'SSVC-Priorisierung (CISA-Coordinator-Entscheidungsbaum)';
+      badges.appendChild(ssvcPill);
+    }
+    threatCell.appendChild(badges);
+    tr.appendChild(threatCell);
+
+    tbody.appendChild(tr);
+  });
+}
+document.getElementById('drilldown-close').addEventListener('click', () => {
+  document.getElementById('drilldown').classList.remove('show');
+  openWeekIndex = null;
+  render();
+});
+
+const toggleBtn = document.getElementById('toggle-table');
+const tableWrap = document.getElementById('weekly-table-wrap');
+toggleBtn.addEventListener('click', () => {
+  tableWrap.classList.toggle('show');
+  toggleBtn.textContent = tableWrap.classList.contains('show') ? 'Tabelle ausblenden' : 'Als Tabelle anzeigen';
+});
+
+render();
+
+// ---- dark/light toggle (defaults to OS preference, manual override persisted) ----
+(function () {
+  const THEME_KEY = 'cve-trend-theme';
+  const themeBtn = document.getElementById('theme-toggle');
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function isDark() {
+    const stamped = document.documentElement.getAttribute('data-theme');
+    if (stamped === 'dark') return true;
+    if (stamped === 'light') return false;
+    return media.matches; // OS-Einstellung
+  }
+  function applyIcon() {
+    themeBtn.textContent = isDark() ? '☀️' : '🌙';
+  }
+
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === 'dark' || stored === 'light') {
+    document.documentElement.setAttribute('data-theme', stored);
+  }
+  applyIcon();
+
+  themeBtn.addEventListener('click', () => {
+    const next = isDark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    applyIcon();
+  });
+
+  // Wenn kein manuelles Override gesetzt ist, auf OS-Änderungen reagieren
+  media.addEventListener('change', () => {
+    if (!localStorage.getItem(THEME_KEY)) applyIcon();
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  patchday-board:
+    build: .
+    container_name: patchday-board
+    ports:
+      - "5099:5099"
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - LISTEN_PORT=5099
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

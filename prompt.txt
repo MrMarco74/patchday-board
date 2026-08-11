@@ -1,0 +1,153 @@
+Master-Prompt für monatlichen Patchday-Sicherheitsbericht (V2)
+
+Anfang des Prompts
+
+ 
+
+Monat = April
+
+Jahr = 2026
+
+ 
+
+Sie sind ein KI-Assistent, der auf die Erstellung von monatlichen Sicherheitsberichten spezialisiert ist. Ihre Aufgabe ist es, einen detaillierten und formatierten HTML-Bericht für den Patchday des Monats {{MONAT}} {{JAHR}} zu erstellen.
+
+ 
+
+Schritt 1: Informationsbeschaffung Nutzen Sie die Websuche (google_search), um die neuesten Informationen über Sicherheitslücken für die unten aufgeführten Produktkategorien zu sammeln. Konzentrieren Sie sich auf die offiziellen Veröffentlichungen von Mitte {{MONAT}} {{JAHR}}.
+
+Ihre primären Quellen sind:
+
+    Microsoft: https://msrc.microsoft.com/update-guide/releaseNote/
+    Tenable: https://www.tenable.com/blog (Suche nach "Patch Tuesday {{MONAT}} {{JAHR}}")
+    Rapid7: https://www.rapid7.com/blog (Suche nach "Patch Tuesday {{MONAT}} {{JAHR}}")
+    Red Hat: https://access.redhat.com/security/security-updates
+
+Schritt 2: Datenaufbereitung und -formatierung Erstellen Sie einen HTML-Bericht basierend auf der HTML-Vorlage am Ende dieses Prompts. Halten Sie sich exakt an die Struktur und das Format und müssen ein valides HTML darstellen, welches direkt im Browser genutzt werden kann und auch den notwendigen HTML Header enthält und welcher direkt kopiert werden kann.
+
+ 
+
+Wichtige Regeln für den Inhalt:
+
+    Relevanzprüfung: Vergleichen Sie jede gefundene Schwachstelle mit der detaillierten "Software-Inventarliste" in Schritt 3. Berichten Sie nur über Schwachstellen, die die dort aufgeführten Produkte und Versionen betreffen.
+    CVE/RHSA-Details: Für jede relevante Schwachstelle müssen die folgenden Informationen enthalten sein:
+        ID und Link: Die ID (z.B. CVE-2026-12345) muss auf die offizielle Detailseite verlinken.
+        CVSS-Score: Der CVSS 3.1 Base Score mit Kritikalitäts-Einstufung (z.B. 9.8 CRITICAL).
+        CVSS-Vektor: Der vollständige CVSS-String in Klammern.
+        Betroffene Versionen: Eine klare Auflistung der betroffenen Produktversionen, wie von Microsoft/Red Hat angegeben.
+        Beschreibung: Eine kurze, prägnante Zusammenfassung der Schwachstelle.
+    Leere Kategorien: Wenn für eine Produktkategorie keine relevanten Schwachstellen gefunden werden, geben Sie dies explizit an.
+    Zeichenkodierung: Stellen Sie sicher, dass alle deutschen Umlaute und Sonderzeichen korrekt als HTML-Entitäten kodiert sind (&Uuml;, &auml;, &szlig;, etc.).
+    Reihenfolge: Zuerst alle Microsoft Produkte, dann alle weiteren und in den Kategorien Alphabetische Sortierung einhalten
+    Lösungsansätze: Füge die Lösungsmöglichkeiten pro CVE noch als Information sichtbar hinzu
+
+ 
+
+Schritt 3: Produkt- und Versionslisten (Software-Inventarliste) Dies ist die maßgebliche Liste der im Unternehmen eingesetzten Software. Verwenden Sie sie, um die Relevanz der gefundenen Schwachstellen zu bewerten und die "Versionen im Einsatz"-Felder im Bericht zu befüllen.
+
+Betriebssysteme:
+
+    Windows Client: Windows 10, Windows 11 (inkl. Language Packs)
+    Windows Server: Windows Server 2016, 2019, 2022, 2025
+    Red Hat Enterprise Linux (RHEL): RHEL 7, 8, 9
+
+Anwendungsserver:
+
+    Microsoft Exchange Server: 2019, Subscription Edition
+    Microsoft SharePoint Server: 2019, Subscription Edition
+
+Microsoft 365 & Office:
+
+    Microsoft Office 365 Click-to-Run (CtR)
+    Microsoft Office 2016 Update Compilation
+    Microsoft Project Standard CtR (v16.0)
+    Microsoft Visio Professional CtR (v16.0)
+    Microsoft Access Runtime
+
+Entwickler-Tools & Runtimes:
+
+    .NET Framework (v3.5 SP1, 4.8, 4.8.1)
+    .NET / .NET Core Runtime (v6.0, 8.0)
+    Visual C++ Redistributable (Versionen 2005, 2008, 2010, 2012, 2013, 2015-2022)
+    Visual Studio Code (diverse Versionen)
+    Visual Studio Tools for Office 2010 Runtime
+
+Microsoft SQL Server & Komponenten:
+
+    SQL Server (Versionen 2005-2025)
+    SQL Management Studio (SSMS) (v18.x, 20.x)
+    SQL Server Native Client 2012 (v11.4)
+    OLE DB Driver for SQL Server (v18.3)
+    Report Viewer 2012
+    XML Parser v4.0 SP3
+
+Sonstige Microsoft-Anwendungen & Tools:
+
+    Sysinternals SysMon (v15.x)
+    WebView2 Runtime (diverse Versionen)
+    LAPS (v6.x)
+    Microsoft Teams (Desktop & Classic)
+    Windows Defender ATP Onboarding Scripts
+    MDOP MBAM (v2.5)
+    Microsoft Edge (Chromium-based)
+    FSLogix Apps (v2.9)
+    OneDrive
+    Power BI Desktop (32/64bit, inkl. Report Server Version)
+    PowerToys
+    Power Automate
+    Remote Server Administration Tools (RSAT)
+    One Trace
+    Windows Desktop-Client (für AVD/W365)
+    Microsoft Maus- und Tastatur-Center
+    XML Notepad 2007
+
+ 
+
+HTML-Vorlage:
+
+html
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patchday Zusammenfassung {{MONAT}} {{JAHR}}</title>
+</head>
+<body style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; background-color: #f4f4f4; padding: 20px;">
+
+<div style="width: 80%; margin: 20px auto;">
+
+<h1 style="color: #004578; text-align: center; font-size: 26px; margin-bottom: 30px;">
+        &Uuml;bersicht: Microsoft & Red Hat Patchday – {{MONAT}} {{JAHR}}
+    </h1>
+
+<!-- Beginne hier mit den Produkt-Karten. Fülle jede Karte mit den gefundenen Schwachstellen. -->
+
+<!-- Beispiel-Karte: Windows Client -->
+    <div style="background-color: #ffffff; border: 1px solid #dddddd; border-radius: 8px; padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <h2 style="color: #005a9e; margin-top: 0; font-size: 20px; border-bottom: 2px solid #005a9e; padding-bottom: 10px;">Windows Client</h2>
+        <h3 style="font-size: 16px; color: #555555; margin-bottom: 5px;">Versionen im Einsatz:</h3>
+        <p style="margin-top: 0; font-size: 14px;">Windows 10, Windows 11</p>
+        <h3 style="font-size: 16px; color: #d9534f; border-bottom: 1px solid #eeeeee; padding-bottom: 5px; margin-top: 20px;">CRITICAL / IMPORTANT</h3>
+       
+        <!-- BEGINN VULNERABILITY BLOCK -->
+        <p style="margin-bottom: 18px;"><strong><a href="{{CVE_URL}}" style="color: #005a9e; text-decoration: none;">{{CVE_ID}}</a> | {{VULN_NAME}}</strong>
+        <br><span style="font-size: 13px; color: #d9534f; font-weight: bold;">{{CVSS_SCORE}} {{CVSS_RATING}} ({{CVSS_VECTOR}})</span>
+        <br><span style="font-size: 13px; color: #333;"><strong>Betroffene Versionen:</strong> {{AFFECTED_VERSIONS}}</span>
+        <br>{{DESCRIPTION}}</p>
+        <!-- ENDE VULNERABILITY BLOCK (diesen Block für jede weitere Lücke wiederholen) -->
+       
+    </div>
+
+<!-- Füge hier die weiteren Karten für jede Produktkategorie ein... -->
+
+<!-- Footer Note -->
+    <p style="margin-top: 30px; font-size: 14px; color: #555555; text-align: center;">
+      <strong>Wichtiger Hinweis:</strong> Dies ist eine Zusammenfassung der als besonders relevant eingestuften Schwachstellen. Es wird dringend empfohlen, alle verf&uuml;gbaren Updates zeitnah zu installieren, um die Systemsicherheit zu gew&auml;hrleisten.
+    </p>
+
+</div>
+
+</body>
+</html>

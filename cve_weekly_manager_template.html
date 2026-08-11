@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neue Sicherheitslücken pro Woche</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --critical:       #d03b3b;
+    --high:           #ec835a;
+    --ssvc-act:       #d03b3b;
+    --ssvc-attend:    #ec835a;
+    --ssvc-track-star:#a6790f;
+    --ssvc-track:     #898781;
+    --tab-bg:         #f2f1ed;
+    --caption-bg:     #eef3fa;
+    --caption-border: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --critical:       #d03b3b;
+      --high:           #ec835a;
+      --ssvc-act:       #d03b3b;
+      --ssvc-attend:    #ec835a;
+      --ssvc-track-star:#a6790f;
+      --ssvc-track:     #898781;
+      --tab-bg:         #232322;
+      --caption-bg:     #17222e;
+      --caption-border: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --critical:       #d03b3b;
+    --high:           #ec835a;
+    --ssvc-act:       #d03b3b;
+    --ssvc-attend:    #ec835a;
+    --ssvc-track-star:#a6790f;
+    --ssvc-track:     #898781;
+    --tab-bg:         #232322;
+    --caption-bg:     #17222e;
+    --caption-border: #3987e5;
+  }
+
+  body { margin: 0; background: var(--page); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-root { width: 90%; max-width: 1400px; margin: 32px auto; padding: 28px 32px; background: var(--surface-1);
+              border: 1px solid var(--border); border-radius: 12px; color: var(--text-primary); }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+  .theme-toggle {
+    flex: none; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--tab-bg); color: var(--text-secondary); font-size: 16px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+
+  .tabs { display: flex; gap: 8px; margin: 18px 0 16px; }
+  .tab {
+    font: inherit; font-size: 15px; font-weight: 600; padding: 12px 20px; border-radius: 10px;
+    border: 2px solid var(--border); background: var(--tab-bg); color: var(--text-secondary);
+    cursor: pointer; flex: 1; text-align: center;
+  }
+  .tab[data-active="true"] { color: #fff; background: var(--caption-border); border-color: var(--caption-border); }
+
+  .zoom-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .zoom-label { font-size: 13px; color: var(--text-muted); margin-right: 2px; }
+  .zoom-btn {
+    font: inherit; font-size: 13.5px; font-weight: 600; padding: 7px 16px; border-radius: 8px;
+    border: 2px solid var(--border); background: var(--tab-bg); color: var(--text-secondary); cursor: pointer;
+  }
+  .zoom-btn[data-active="true"] { color: #fff; background: var(--text-secondary); border-color: var(--text-secondary); }
+
+  .llm-marker { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.7; }
+  .llm-label { fill: var(--text-muted); font-size: 10px; }
+
+  .caption {
+    background: var(--caption-bg); border-left: 4px solid var(--caption-border); border-radius: 6px;
+    padding: 14px 18px; font-size: 15px; line-height: 1.5; color: var(--text-primary); margin-bottom: 22px;
+  }
+  .caption b { font-weight: 700; }
+
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; overflow: visible; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+  .axis-label { fill: var(--text-muted); font-size: 12px; }
+
+  .legend { display: flex; gap: 24px; align-items: center; font-size: 14px; color: var(--text-secondary);
+            margin-top: 16px; flex-wrap: wrap; justify-content: center; }
+  .legend .item { display: flex; align-items: center; gap: 8px; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  .swatch.line { width: 18px; height: 3px; border-radius: 0; background: var(--text-primary); }
+  .avg-line { stroke: var(--text-primary); stroke-width: 2.5; fill: none; stroke-dasharray: 5 4; }
+  .avg-label { fill: var(--text-primary); font-size: 12px; font-weight: 700; }
+
+  .tooltip {
+    position: fixed; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--text-primary);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); opacity: 0; transition: opacity 0.08s; white-space: nowrap; z-index: 5;
+  }
+  .tooltip .t-week { font-weight: 700; margin-bottom: 6px; font-size: 14px; }
+  .tooltip .t-row { display: flex; justify-content: space-between; gap: 18px; }
+  .tooltip .t-row b { font-weight: 700; margin-left: 10px; }
+
+  .footnote { margin-top: 20px; font-size: 12px; color: var(--text-muted); text-align: center; }
+  .footnote a { color: var(--text-muted); }
+
+  .export-row { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
+  .export-btn {
+    font: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 18px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--tab-bg); color: var(--text-secondary); cursor: pointer;
+  }
+  .export-btn:hover { color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<div class="viz-root">
+  <div class="header-row">
+    <div>
+      <h1>Neue Sicherheitslücken pro Woche</h1>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" title="Dark/Light Mode" aria-label="Farbschema umschalten"></button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab" id="tab-simple" data-active="true">Einfache Ansicht</button>
+    <button class="tab" id="tab-risk" data-active="false">Mit Risikobewertung</button>
+  </div>
+
+  <div class="zoom-row" id="zoom-row">
+    <span class="zoom-label">Zeitraum:</span>
+  </div>
+
+  <div class="caption" id="caption"></div>
+
+  <div class="chart-wrap">
+    <svg id="chart"></svg>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="export-row">
+    <button class="export-btn" id="btn-export-csv">⬇ Zahlen als CSV exportieren (Excel)</button>
+    <button class="export-btn" id="btn-share">🔗 Link teilen</button>
+  </div>
+
+  <div class="footnote">Zeitraum: letzte <span id="week-count"></span> Wochen · Quelle: CyberPulse Hub · <a href="cve_trend_doku.html" target="_blank" rel="noopener">Methodik &amp; Details</a></div>
+</div>
+
+<script>
+const RAW = __DATA_JSON__;
+
+const W = 1200, H = 440, padL = 56, padR = 20, padT = 20, padB = 40;
+const plotW = W - padL - padR, plotH = H - padT - padB;
+const svgNS = 'http://www.w3.org/2000/svg';
+
+let view = 'simple'; // 'simple' | 'risk'
+let zoomWeeks = null; // null = alle verfügbaren Wochen (Default), sonst Zahl = "letzte N Wochen"
+
+// Veröffentlichungstermine großer "Frontier"-LLMs, um optisch zu prüfen, ob CVE-
+// Aufkommen zeitlich mit KI-Modell-Releases zusammenhängt (z.B. mehr KI-gestützte
+// Schwachstellenanalyse/Exploit-Entwicklung nach einem großen Release).
+// Quelle: vom Nutzer bereitgestellte Liste (frontier_llms.csv).
+const LLM_MARKERS = [
+  { date: '2023-07-11', label: 'Claude 2' },
+  { date: '2023-07-18', label: 'Llama 2' },
+  { date: '2023-12-06', label: 'Gemini 1.0' },
+  { date: '2024-02-15', label: 'Gemini 1.5 Pro' },
+  { date: '2024-03-04', label: 'Claude 3' },
+  { date: '2024-04-18', label: 'Llama 3' },
+  { date: '2024-05-13', label: 'GPT-4o' },
+  { date: '2024-06-20', label: 'Claude 3.5 Sonnet' },
+  { date: '2024-07-23', label: 'Llama 3.1' },
+  { date: '2024-09-12', label: 'o1-preview' },
+  { date: '2024-11-04', label: 'Claude 3.5 Haiku' },
+  { date: '2024-12-11', label: 'Gemini 2.0 Flash' },
+  { date: '2024-12-26', label: 'DeepSeek V3' },
+  { date: '2025-02-18', label: 'Grok 3' },
+  { date: '2025-02-24', label: 'Claude 3.7 Sonnet' },
+  { date: '2025-02-27', label: 'GPT-4.5' },
+  { date: '2025-05-15', label: 'Claude 4' },
+  { date: '2025-08-15', label: 'GPT-5' },
+  { date: '2025-09-15', label: 'Sonnet 4.5' },
+  { date: '2025-12-15', label: 'GPT-5.2' },
+  { date: '2026-02-15', label: 'Opus 4.6' },
+  { date: '2026-03-15', label: 'GPT-5.4' },
+  { date: '2026-04-15', label: 'Claude Mythos Preview' },
+  { date: '2026-05-15', label: 'DeepSeek V4' },
+  { date: '2026-07-15', label: 'Gemini 3.5 Flash' },
+  { date: '2026-07-15', label: 'Grok 4.5' },
+];
+
+function el(tag, attrs) {
+  const e = document.createElementNS(svgNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+const SSVC_LABEL = { Act: 'Sofort handeln', Attend: 'Zeitnah einplanen', 'Track*': 'Beobachten', Track: 'Regulärer Patch-Zyklus' };
+const SSVC_COLOR = { Act: 'var(--ssvc-act)', Attend: 'var(--ssvc-attend)', 'Track*': 'var(--ssvc-track-star)', Track: 'var(--ssvc-track)' };
+const SSVC_ORDER = ['Track', 'Track*', 'Attend', 'Act'];
+
+function riskBreakdown(week) {
+  const counts = { Act: 0, Attend: 0, 'Track*': 0, Track: 0 };
+  (week.cves || []).forEach(c => {
+    if (c.severity === 'medium') return;
+    if (counts[c.ssvc_decision] !== undefined) counts[c.ssvc_decision]++;
+  });
+  return counts;
+}
+
+const svg = document.getElementById('chart');
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+svg.setAttribute('width', '100%');
+svg.setAttribute('height', H);
+const tooltip = document.getElementById('tooltip');
+const themeToggleEl = document.getElementById('theme-toggle');
+const captionEl = document.getElementById('caption');
+const legendEl = document.getElementById('legend');
+
+// ---- Zeitraum-Auswahl ----
+const zoomRow = document.getElementById('zoom-row');
+const ZOOM_PRESETS = [
+  { key: 13, label: '3 Monate' },
+  { key: 26, label: '6 Monate' },
+  { key: 52, label: '1 Jahr' },
+  { key: null, label: 'Alles' },
+];
+ZOOM_PRESETS.forEach(p => {
+  const btn = document.createElement('button');
+  btn.className = 'zoom-btn';
+  btn.textContent = p.label;
+  btn.dataset.active = (zoomWeeks === p.key) ? 'true' : 'false';
+  btn.addEventListener('click', () => {
+    zoomWeeks = p.key;
+    zoomRow.querySelectorAll('.zoom-btn').forEach(b => b.dataset.active = 'false');
+    btn.dataset.active = 'true';
+    render();
+  });
+  zoomRow.appendChild(btn);
+});
+
+function currentData() {
+  return zoomWeeks ? RAW.slice(-zoomWeeks) : RAW;
+}
+
+function render() {
+  svg.innerHTML = '';
+  const DATA = currentData();
+  document.getElementById('week-count').textContent = DATA.length;
+
+  const maxTotal = Math.max(1, ...DATA.map(w => w.critical + w.high));
+  const yMax = Math.ceil(maxTotal / 100) * 100 || 10;
+  const n = DATA.length;
+  const bandW = plotW / n;
+  const barW = Math.min(34, bandW * 0.6);
+
+  function yFor(v) { return padT + plotH - (v / yMax) * plotH; }
+  function xFor(i) { return padL + i * bandW + bandW / 2; }
+
+  const ySteps = 4;
+  for (let s = 0; s <= ySteps; s++) {
+    const v = (yMax / ySteps) * s;
+    const y = yFor(v);
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y, class: s === 0 ? 'baseline' : 'gridline' }));
+    const t = el('text', { x: padL - 8, y: y + 4, class: 'axis-label', 'text-anchor': 'end' });
+    t.textContent = Math.round(v).toLocaleString('de-DE');
+    svg.appendChild(t);
+  }
+
+  DATA.forEach((w, i) => {
+    const xLeft = xFor(i) - barW / 2;
+    const yBase = yFor(0);
+
+    let segments;
+    if (view === 'simple') {
+      segments = [
+        { value: w.critical, color: 'var(--critical)', label: 'Critical' },
+        { value: w.high,     color: 'var(--high)',      label: 'High' },
+      ];
+    } else {
+      const rb = riskBreakdown(w);
+      segments = SSVC_ORDER.map(key => ({ value: rb[key], color: SSVC_COLOR[key], label: SSVC_LABEL[key] }));
+    }
+
+    let cumulative = 0;
+    segments.forEach(seg => {
+      if (seg.value <= 0) return;
+      const yTop = yFor(cumulative + seg.value);
+      const yBottom = cumulative === 0 ? yBase : yFor(cumulative);
+      const h = Math.max(0, yBottom - yTop);
+      svg.appendChild(el('rect', { x: xLeft, y: yTop, width: barW, height: h, fill: seg.color, rx: 3, ry: 3 }));
+      cumulative += seg.value;
+    });
+
+    // Unsichtbare Hit-Fläche für Tooltip über die gesamte Spaltenbreite
+    const hit = el('rect', { x: padL + i * bandW, y: padT, width: bandW, height: plotH, fill: 'transparent', style: 'cursor:pointer' });
+    hit.addEventListener('mousemove', () => {
+      tooltip.style.opacity = 1;
+      let rows;
+      if (view === 'simple') {
+        rows = `
+          <div class="t-row"><span>Critical</span><b>${w.critical}</b></div>
+          <div class="t-row"><span>High</span><b>${w.high}</b></div>
+          <div class="t-row"><span>Gesamt</span><b>${w.critical + w.high}</b></div>`;
+      } else {
+        const rb = riskBreakdown(w);
+        rows = SSVC_ORDER.slice().reverse().map(key =>
+          `<div class="t-row"><span>${SSVC_LABEL[key]}</span><b>${rb[key]}</b></div>`
+        ).join('');
+      }
+      tooltip.innerHTML = `<div class="t-week">${w.week_label} (ab ${w.week_start})</div>${rows}`;
+      const btnRect = themeToggleEl.getBoundingClientRect();
+      const tw = tooltip.offsetWidth;
+      let left = btnRect.left - tw - 12;
+      if (left < 8) left = 8;
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = btnRect.top + 'px';
+    });
+    hit.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; });
+    svg.appendChild(hit);
+  });
+
+  // Bei vielen Wochen (z.B. "1 Jahr"/"Alles") nicht jede Woche beschriften — sonst
+  // überlappen sich die Labels. Ziel: höchstens ~22 sichtbare Labels, gleichmäßig verteilt.
+  const labelStep = Math.max(1, Math.ceil(n / 22));
+  DATA.forEach((w, i) => {
+    if (i % labelStep !== 0) return;
+    const t = el('text', { x: xFor(i), y: H - padB + 18, class: 'axis-label', 'text-anchor': 'middle', 'font-size': '10' });
+    t.textContent = 'W' + w.week_label.split('-W')[1];
+    svg.appendChild(t);
+  });
+
+  // Trendlinie: gleitender 4-Wochen-Durchschnitt (Gesamtzahl), unabhängig von der
+  // Ansicht dieselbe Linie — zeigt die grundlegende Entwicklung unabhängig davon,
+  // ob gerade nach Severity oder nach Risikobewertung eingefärbt wird.
+  let path = '';
+  DATA.forEach((w, i) => { path += (i === 0 ? 'M' : 'L') + xFor(i) + ' ' + yFor(w.rolling_avg_4w) + ' '; });
+  svg.appendChild(el('path', { d: path, class: 'avg-line' }));
+  const lastW = DATA[DATA.length - 1];
+  const lbl = el('text', { x: xFor(n - 1) + 8, y: yFor(lastW.rolling_avg_4w) + 4, class: 'avg-label' });
+  lbl.textContent = 'Ø 4 Wochen';
+  svg.appendChild(lbl);
+
+  // LLM-Release-Marker: senkrechte Linie an der Wochenspalte, die dem Datum am
+  // nächsten liegt (nur wenn das Datum im aktuell sichtbaren Zeitraum liegt).
+  // Marker, die auf dieselbe Woche fallen, werden zu einem Label zusammengefasst
+  // (sonst überlappen sich z.B. "Gemini 3.5 Flash" und "Grok 4.5" am selben Tag).
+  const firstWeek = new Date(DATA[0].week_start);
+  const lastWeekEnd = new Date(DATA[DATA.length - 1].week_start);
+  lastWeekEnd.setDate(lastWeekEnd.getDate() + 7);
+
+  const markersByWeek = {};
+  LLM_MARKERS.forEach(marker => {
+    const markerDate = new Date(marker.date);
+    if (markerDate < firstWeek || markerDate > lastWeekEnd) return;
+    let closestIdx = -1, closestDiff = Infinity;
+    DATA.forEach((w, i) => {
+      const diff = Math.abs(markerDate - new Date(w.week_start));
+      if (diff < closestDiff) { closestDiff = diff; closestIdx = i; }
+    });
+    if (closestIdx === -1) return;
+    (markersByWeek[closestIdx] = markersByWeek[closestIdx] || []).push(marker.label);
+  });
+
+  Object.keys(markersByWeek).forEach(idxStr => {
+    const idx = Number(idxStr);
+    const x = xFor(idx);
+    svg.appendChild(el('line', { x1: x, x2: x, y1: padT, y2: yFor(0), class: 'llm-marker' }));
+    const lbl2 = el('text', { x: x, y: padT - 6, class: 'llm-label', 'text-anchor': 'middle' });
+    lbl2.textContent = markersByWeek[idx].join(' / ');
+    svg.appendChild(lbl2);
+  });
+
+  // Legende
+  legendEl.innerHTML = '';
+  const legendItems = view === 'simple'
+    ? [{ color: 'var(--critical)', label: 'Critical' }, { color: 'var(--high)', label: 'High' }]
+    : SSVC_ORDER.slice().reverse().map(key => ({ color: SSVC_COLOR[key], label: SSVC_LABEL[key] }));
+  legendItems.forEach(it => {
+    const span = document.createElement('span');
+    span.className = 'item';
+    span.innerHTML = `<span class="swatch" style="background:${it.color}"></span>${it.label}`;
+    legendEl.appendChild(span);
+  });
+  const trendSpan = document.createElement('span');
+  trendSpan.className = 'item';
+  trendSpan.innerHTML = `<span class="swatch line"></span>Trend (gleitender 4-Wochen-Schnitt)`;
+  legendEl.appendChild(trendSpan);
+  const markerSpan = document.createElement('span');
+  markerSpan.className = 'item';
+  markerSpan.innerHTML = `<span class="swatch line" style="background:var(--text-muted);"></span>Release großer KI-Modelle`;
+  legendEl.appendChild(markerSpan);
+
+  // Caption
+  captionEl.innerHTML = view === 'simple'
+    ? 'Diese Grafik zeigt, <b>wie viele neue schwerwiegende Sicherheitslücken (Critical/High)</b> jede Woche gemeldet wurden. Die gestrichelte Linie ist der <b>Trend über 4 Wochen</b> — sie glättet einzelne Ausreißer-Wochen. Die Balken sagen <b>nichts darüber aus, wie dringend</b> eine Reaktion tatsächlich nötig ist — dafür die zweite Ansicht nutzen.'
+    : 'Diese Grafik zeigt <b>dieselben wöchentlichen Sicherheitslücken</b>, jetzt eingefärbt danach, <b>wie dringend nach unserer Risikobewertung tatsächlich gehandelt werden muss</b> — rot heißt: aktiv ausgenutzt, sofort handeln. Grau heißt: regulärer Patch-Zyklus reicht. Die gestrichelte Linie zeigt weiterhin den <b>Trend über 4 Wochen</b> (Gesamtzahl, unabhängig von der Einfärbung).';
+}
+
+document.getElementById('tab-simple').addEventListener('click', () => {
+  view = 'simple';
+  document.getElementById('tab-simple').dataset.active = 'true';
+  document.getElementById('tab-risk').dataset.active = 'false';
+  render();
+});
+document.getElementById('tab-risk').addEventListener('click', () => {
+  view = 'risk';
+  document.getElementById('tab-risk').dataset.active = 'true';
+  document.getElementById('tab-simple').dataset.active = 'false';
+  render();
+});
+
+// ---- CSV-Export: nur die aggregierten Wochenzahlen, keine Einzel-CVE-Daten ----
+function exportCSV() {
+  const DATA = currentData();
+  const header = ['Woche', 'Wochenbeginn', 'Critical', 'High', 'Medium', 'Gesamt',
+                   'Trend_4W_Schnitt', 'Auffaellig',
+                   'SSVC_Sofort_handeln', 'SSVC_Zeitnah_einplanen', 'SSVC_Beobachten', 'SSVC_Regulaerer_Patch_Zyklus'];
+  const rows = DATA.map(w => {
+    const rb = riskBreakdown(w);
+    return [
+      w.week_label, w.week_start, w.critical, w.high, w.medium, w.total,
+      w.rolling_avg_4w, w.flagged ? 'ja' : 'nein',
+      rb.Act, rb.Attend, rb['Track*'], rb.Track,
+    ];
+  });
+  const csv = [header, ...rows].map(r => r.join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cve_wochenstatistik_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+
+// ---- Link teilen: aktuelle Seiten-URL in die Zwischenablage kopieren ----
+document.getElementById('btn-share').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-share');
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    btn.textContent = '✓ Link kopiert!';
+  } catch (e) {
+    // Fallback für Browser ohne Clipboard-API-Berechtigung
+    const ta = document.createElement('textarea');
+    ta.value = window.location.href;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); btn.textContent = '✓ Link kopiert!'; }
+    catch (e2) { btn.textContent = 'Kopieren fehlgeschlagen'; }
+    ta.remove();
+  }
+  setTimeout(() => { btn.textContent = original; }, 2000);
+});
+
+render();
+
+// ---- dark/light toggle (defaults to OS preference, manual override persisted) ----
+(function () {
+  const THEME_KEY = 'cve-weekly-manager-theme';
+  const themeBtn = document.getElementById('theme-toggle');
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function isDark() {
+    const stamped = document.documentElement.getAttribute('data-theme');
+    if (stamped === 'dark') return true;
+    if (stamped === 'light') return false;
+    return media.matches;
+  }
+  function applyIcon() { themeBtn.textContent = isDark() ? '☀️' : '🌙'; }
+
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === 'dark' || stored === 'light') document.documentElement.setAttribute('data-theme', stored);
+  applyIcon();
+
+  themeBtn.addEventListener('click', () => {
+    const next = isDark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    applyIcon();
+  });
+
+  media.addEventListener('change', () => { if (!localStorage.getItem(THEME_KEY)) applyIcon(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+[Unit]
+Description=Patchday Board Service
+After=network.target
+
+[Service]
+Type=simple
+User=patchday
+WorkingDirectory=/opt/patchday-board
+ExecStart=/opt/patchday-board/venv/bin/python -u patchday_backend.py
+Restart=on-failure
+RestartSec=5
+Environment=OLLAMA_URL=http://localhost:11434
+Environment=LISTEN_PORT=5099
+EnvironmentFile=-/opt/patchday-board/.env
+
+[Install]
+WantedBy=multi-user.target
