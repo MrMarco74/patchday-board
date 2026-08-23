@@ -1,5 +1,7 @@
 # 🛡️ Patchday Board
 
+![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Language](https://img.shields.io/badge/language-HTML-informational.svg) ![AI generated](https://img.shields.io/badge/AI-generated-8A2BE2.svg)
+
 > **Automated Monthly Security & Patch Tuesday Intelligence Report Generator powered by LLMs.**
 
 `patchday-board` fetches monthly Patch Tuesday security advisories directly from official vendor APIs (**Microsoft MSRC CVRF v3.0** & **Red Hat Security Data API**), prioritizes CVEs according to **SSVC (Stakeholder-Specific Vulnerability Categorization)**, and utilizes Large Language Models (via **Ollama** or OpenAI-compatible endpoints) to generate executive security summaries in **HTML, Markdown, PDF, and XLSX** formats.
