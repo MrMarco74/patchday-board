@@ -83,6 +83,10 @@ PRODUCT_GROUPS = [
                      "windows netlogon", "windows hyper-v", "windows dns", "windows deployment",
                      "windows remote desktop", "windows container"],
         "excludes": [],
+        # Only the server releases in use. Also keeps out CVEs that affect
+        # nothing but Windows Server 2012/2012 R2.
+        "product_filter": ["windows server 2016", "windows server 2019",
+                           "windows server 2022", "windows server 2025"],
         "search_term": "Patch Tuesday {month} {year} Windows Server CVE",
         "color": "#004578",
     },
@@ -136,6 +140,14 @@ PRODUCT_GROUPS = [
         "keywords": ["office", "excel", "word", "powerpoint", "outlook", "access",
                      "visio", "project", "microsoft 365", "office 365"],
         "excludes": ["exchange server", "sharepoint server"],
+        # Office 365 CtR is called "Microsoft 365 Apps for Enterprise" in the
+        # MSRC feed. The filter also keeps out CVEs that only got in through a
+        # title keyword without affecting an Office product — "Windows Routing
+        # and Remote Access Service (RRAS)" used to match "access".
+        "product_filter": ["microsoft 365 apps for enterprise",
+                           "microsoft office 2016", "microsoft access 2016",
+                           "microsoft project", "microsoft visio",
+                           "microsoft office 365"],
         "search_term": "Patch Tuesday {month} {year} Microsoft Office 365 CVE",
         "color": "#d83b01",
     },
@@ -161,6 +173,30 @@ PRODUCT_GROUPS = [
         "color": "#008272",
     },
 ]
+
+# Retired platforms. Anything listed here disappears from every "affected"
+# line, and a CVE that affects ONLY such platforms never enters the report.
+#
+# This is deliberately global rather than a per-group product_filter: the
+# catch-all group is the last stop for anything unmatched, so a filter there
+# would drop CVEs from the report entirely. CVEs that also affect a supported
+# platform are kept in full — only the retired entries vanish from the list.
+RETIRED_PLATFORMS = [
+    "windows server 2012",   # incl. R2, EOL 10/2023
+    "windows 10",            # fleet runs Windows 11 23H2/25H2
+    "rhel 7",                # EOL 06/2024
+]
+
+
+def _is_retired(version: str) -> bool:
+    v = (version or "").lower()
+    return any(r in v for r in RETIRED_PLATFORMS)
+
+
+def _supported_versions(f: dict) -> list:
+    """Affected versions with the retired platforms removed."""
+    return [v for v in (f.get("affected_versions") or []) if not _is_retired(v)]
+
 
 _SEVERITY_RANK = {"critical": 0, "high": 1, "important": 1, "medium": 2, "moderate": 2, "low": 3, "unknown": 4}
 
@@ -207,7 +243,9 @@ def _versions_for_display(f: dict, group: dict) -> list:
     match the scope. The raw list is alphabetical, so "Windows 10 ..." sorts
     ahead of "Windows 11 ...", and an unfiltered, truncated line would show
     only Windows 10 SKUs for a CVE that earned its place via Windows 11."""
-    versions = f.get('affected_versions') or []
+    # Retired platforms go first — they belong in no "affected" line, not
+    # even in groups without a product_filter.
+    versions = _supported_versions(f)
     prod_filt = [p.lower() for p in group.get('product_filter', [])]
     if not prod_filt or not versions:
         return versions
@@ -485,12 +523,16 @@ def _filter_findings_for_group(findings: list, group: dict, already_matched: set
         inclusion beats a silent loss. The filter only removes what is
         demonstrably out of scope.
         """
+        versions = f.get("affected_versions") or []
+        # A CVE that only affects retired platforms belongs in no group —
+        # not even the catch-all.
+        if versions and not _supported_versions(f):
+            return False
         if not prod_filt:
             return True
-        versions = f.get("affected_versions") or []
         if not versions:
             return True
-        hay = " | ".join(versions).lower()
+        hay = " | ".join(_supported_versions(f)).lower()
         return any(p in hay for p in prod_filt)
 
     matched = []
