@@ -88,25 +88,35 @@ PRODUCT_GROUPS = [
     },
     {
         "name": "Windows Client",
-        "versions": "Windows 10, Windows 11 (inkl. Language Packs)",
+        "versions": "Windows 11 23H2, 25H2 (x64)",
         "cp_source": "msrc",
         "keywords": ["windows shell", "windows gdi", "windows media", "windows kernel",
                      "windows print", "windows security", "windows ui", "windows app",
                      "windows installer", "windows update", "windows hello", "windows search",
                      "windows storage", "windows wifi", "windows bluetooth", "windows graphics",
-                     "windows 10", "windows 11", "windows client"],
+                     "windows 11", "windows client"],
         "excludes": ["windows server"],
-        "search_term": "Patch Tuesday {month} {year} Windows 10 11 client CVE",
+        # Restrict the group to the builds actually in use. MSRC product names
+        # read "Windows 11 Version 23H2 for x64-based Systems"; ARM64 and the
+        # other releases drop out. Matched case-insensitively because Microsoft
+        # writes "Version" both capitalised and lowercase (26H1).
+        "product_filter": ["windows 11 version 23h2 for x64",
+                           "windows 11 version 25h2 for x64"],
+        "search_term": "Patch Tuesday {month} {year} Windows 11 23H2 25H2 CVE",
         "color": "#0078d4",
     },
     {
         "name": "Red Hat Enterprise Linux (RHEL)",
-        "versions": "RHEL 7, 8, 9",
+        "versions": "RHEL 8, 9, 10",
         "cp_source": "rhel",
         "keywords": ["rhel", "red hat", "kernel", "glibc", "openssl", "systemd",
                      "bash", "python", "openssh", "bind", "sudo", "pam"],
         "excludes": [],
-        "search_term": "Red Hat Security Advisories {month} {year} RHSA CVE",
+        # RHEL 7 is out (EOL), RHEL 10 is in. Versions come from the .elN
+        # suffixes of the package NVRs, see _rhel_versions_from_packages().
+        # CVEs without package data — the majority at Red Hat — stay in.
+        "product_filter": ["rhel 8", "rhel 9", "rhel 10"],
+        "search_term": "Red Hat Security Advisories {month} {year} RHEL 8 9 10 RHSA CVE",
         "color": "#cc0000",
     },
     {
@@ -174,6 +184,37 @@ _MONTH_DE_TO_EN = {
 
 # ─── Direct Vendor APIs (MSRC / Red Hat) ──────────────────────────────────────
 
+# SSVC levels and their sort rank. The rank ends up on each finding as
+# ssvc_priority and decides which CVEs survive the per-group cap.
+_SSVC_RANK = {'act': 1, 'attend': 2, 'track*': 3, 'track': 4}
+
+
+def _ssvc_decision(has_exploit: bool, is_rce: bool, score: float,
+                   disclosed: bool = False) -> str:
+    """The heuristic documented in the README: active exploitation beats an
+    RCE attack vector, which beats CVSS."""
+    if has_exploit:
+        return 'act'
+    if is_rce and score >= 8.0:
+        return 'attend'
+    if disclosed or score >= 7.0:
+        return 'track*'
+    return 'track'
+
+
+def _versions_for_display(f: dict, group: dict) -> list:
+    """Affected versions for display — for a scoped group, only those that
+    match the scope. The raw list is alphabetical, so "Windows 10 ..." sorts
+    ahead of "Windows 11 ...", and an unfiltered, truncated line would show
+    only Windows 10 SKUs for a CVE that earned its place via Windows 11."""
+    versions = f.get('affected_versions') or []
+    prod_filt = [p.lower() for p in group.get('product_filter', [])]
+    if not prod_filt or not versions:
+        return versions
+    hits = [v for v in versions if any(p in v.lower() for p in prod_filt)]
+    return hits or versions
+
+
 def _fetch_msrc_findings(month: str, year: str) -> list:
     """Fetches Patch Tuesday CVEs directly from Microsoft MSRC CVRF v3.0 API."""
     abbr, _ = _MONTH_DE_TO_EN.get(month, ('Jun', 6))
@@ -189,13 +230,24 @@ def _fetch_msrc_findings(month: str, year: str) -> list:
         print(f"[MSRC] Error fetching CVRF: {e}")
         return []
 
-    prod_map: dict[str, str] = {}
-    for branch in (data.get('ProductTree') or {}).get('Branch', []):
-        for item in branch.get('Item', []):
-            for prod in item.get('Item', []):
-                prod_map[prod.get('ProductID', '')] = prod.get('Value', '')
-            if item.get('ProductID'):
-                prod_map[item['ProductID']] = item.get('Value', '')
+    # The authoritative product list is ProductTree.FullProductName (282 entries
+    # in the 2026-Sep feed). Walking Branch[].Item[] finds nothing: the branches
+    # are named "Items" (plural) and carry no products themselves, so prod_map
+    # came out empty and every CVE was grouped on its title alone.
+    prod_tree = data.get('ProductTree') or {}
+    prod_map: dict[str, str] = {
+        p.get('ProductID', ''): p.get('Value', '')
+        for p in (prod_tree.get('FullProductName') or [])
+        if p.get('ProductID') and p.get('Value')
+    }
+
+    def _walk_branches(nodes):
+        for node in nodes or []:
+            if node.get('ProductID') and node.get('Value'):
+                prod_map.setdefault(node['ProductID'], node['Value'])
+            _walk_branches(node.get('Items') or node.get('Item') or [])
+
+    _walk_branches(prod_tree.get('Branch') or [])
 
     findings = []
     for vuln in data.get('Vulnerability', []):
@@ -213,16 +265,34 @@ def _fetch_msrc_findings(month: str, year: str) -> list:
             except (ValueError, TypeError):
                 pass
 
-        severity, is_rce, has_exploit = '', False, False
+        # CVRF Threat types, verified against the 2026-Sep feed:
+        #   0 = Impact   (Remote Code Execution, Elevation of Privilege, ...)
+        #   1 = Exploit Status ("Publicly Disclosed:No;Exploited:Yes;...")
+        #   3 = Severity (Critical / Important / Moderate / Low)
+        # Types 0 and 3 used to be swapped here, so is_rce was never True and
+        # `severity` held the impact string instead of a severity.
+        severity, impact, is_rce, has_exploit, disclosed = '', '', False, False, False
         for t in (vuln.get('Threats') or []):
             t_type = t.get('Type', -1)
-            t_val  = ((t.get('Description') or {}).get('Value') or '').lower()
-            if t_type == 0 and not severity:
-                severity = t_val.capitalize()
-            elif t_type == 3 and 'remote code execution' in t_val:
-                is_rce = True
-            elif t_type == 1 and 'yes' in t_val:
-                has_exploit = True
+            t_raw  = ((t.get('Description') or {}).get('Value') or '').strip()
+            t_val  = t_raw.lower()
+            if t_type == 3 and t_raw and not severity:
+                severity = t_raw
+            elif t_type == 0 and t_raw:
+                if not impact:
+                    impact = t_raw
+                if 'remote code execution' in t_val:
+                    is_rce = True
+            elif t_type == 1:
+                # Parse the fields instead of matching 'yes' anywhere in the
+                # string: "Publicly Disclosed:Yes;Exploited:No" is NOT exploited.
+                for part in t_raw.split(';'):
+                    k, _, v = part.partition(':')
+                    k, v = k.strip().lower(), v.strip().lower()
+                    if k == 'exploited' and v == 'yes':
+                        has_exploit = True
+                    elif k == 'publicly disclosed' and v == 'yes':
+                        disclosed = True
 
         affected_products = []
         for ps in (vuln.get('ProductStatuses') or []):
@@ -230,25 +300,36 @@ def _fetch_msrc_findings(month: str, year: str) -> list:
                 name = prod_map.get(pid, '')
                 if name:
                     affected_products.append(name)
-        matching_text = title_val + ' ' + ' '.join(affected_products[:10])
+        # Group on the title only: it names the component ("Windows Hyper-V",
+        # "Microsoft Word"). Folding in the affected products makes the first
+        # group (Windows Server) swallow nearly every Windows CVE, since almost
+        # all of them list a Server SKU. The product list is kept separately in
+        # affected_versions, where the version filter reads it.
+        matching_text = title_val
 
         if not severity:
-            severity = 'Critical' if score >= 9.0 else 'High' if score >= 7.0 else 'Medium'
+            severity = 'Critical' if score >= 9.0 else 'Important' if score >= 7.0 else 'Moderate'
 
         findings.append({
             'cve_id':            cve_id,
             'severity':          severity,
+            'impact':            impact or 'n/a',
             'score':             score,
             'source':            'msrc',
             'summary':           title_val,
             'matching_text':     matching_text,
+            # Not truncated: the version filter checks against this list, and
+            # a cap would sort "Windows 10 ..." ahead of "Windows 11 ...".
+            'affected_versions': sorted(set(affected_products)),
             'is_kev':            False,
             'has_exploit':       has_exploit,
             'has_metasploit':    False,
             'is_rce':            is_rce,
-            'ssvc_decision':     'attend' if has_exploit else '',
+            'is_disclosed':      disclosed,
+            'ssvc_decision':     _ssvc_decision(has_exploit, is_rce, score, disclosed),
             'ssvc_exploitation': 'active' if has_exploit else 'poc' if is_rce else 'none',
-            'ssvc_priority':     4,
+            'ssvc_priority':     _SSVC_RANK.get(
+                _ssvc_decision(has_exploit, is_rce, score, disclosed), 4),
             'product':           affected_products[0] if affected_products else 'Microsoft',
             'epss_score':        None,
         })
@@ -262,6 +343,21 @@ def _fetch_msrc_findings(month: str, year: str) -> list:
     findings = [f for f in findings if _relevant(f)]
     print(f"[MSRC] {len(findings)} relevant CVEs fetched for {month} {year}")
     return findings
+
+
+def _rhel_versions_from_packages(packages) -> list:
+    """Derives RHEL major versions from the package NVRs the Security Data API
+    returns: "389-ds-base-0:2.4.5-29.el9_4" -> "RHEL 9". The API carries no
+    version field of its own, the .elN suffix is the only source. Packages
+    without a recognisable suffix (module streams such as "redhat-ds:12-...")
+    yield nothing — the list stays empty and the version filter lets the
+    finding through rather than discarding it unchecked."""
+    found = set()
+    for pkg in packages or []:
+        m = re.search(r"\.el(\d+)", pkg or "")
+        if m:
+            found.add(int(m.group(1)))
+    return [f"RHEL {v}" for v in sorted(found)]
 
 
 def _fetch_rhel_findings(month: str, year: str) -> list:
@@ -292,6 +388,11 @@ def _fetch_rhel_findings(month: str, year: str) -> list:
         prods  = c.get('package_state') or []
         pnames = [p.get('package_name', '') for p in prods if isinstance(p, dict)]
         mtext  = summ + ' ' + ' '.join(pnames[:10])
+        is_rce = any(k in summ.lower() for k in ('code execution', ' rce', 'arbitrary code'))
+        # Red Hat reports no exploitation status, so the rating rests on RCE
+        # and CVSS. This used to be blank, which printed "SSVC: pending" for
+        # every Red Hat CVE in the report.
+        ssvc = _ssvc_decision(False, is_rce, score)
 
         return {
             'cve_id':            cve_id,
@@ -300,19 +401,24 @@ def _fetch_rhel_findings(month: str, year: str) -> list:
             'source':            'rhel',
             'summary':           summ,
             'matching_text':     mtext,
+            'affected_versions': _rhel_versions_from_packages(c.get('affected_packages')),
             'is_kev':            False,
             'has_exploit':       False,
             'has_metasploit':    False,
-            'is_rce':            False,
-            'ssvc_decision':     '',
-            'ssvc_exploitation': 'none',
-            'ssvc_priority':     4,
+            'is_rce':            is_rce,
+            'ssvc_decision':     ssvc,
+            'ssvc_exploitation': 'poc' if is_rce else 'none',
+            'ssvc_priority':     _SSVC_RANK.get(ssvc, 4),
             'product':           pnames[0] if pnames else 'Red Hat',
             'epss_score':        None,
         }
 
     # Query Red Hat Security Data API
-    url = f"https://access.redhat.com/labs/securitydataapi/cve.json?after={after}&before={before}&per_page=250"
+    # Red Hat moved the Security Data API from /labs/securitydataapi/ to
+    # /hydra/rest/securitydata/; the old path answers 404, which left the
+    # report with zero RHEL CVEs.
+    url = (f"https://access.redhat.com/hydra/rest/securitydata/cve.json"
+           f"?after={after}&before={before}&per_page=250")
     try:
         req  = urllib.request.Request(url, headers={"User-Agent": "PatchdayBoard/1.0"})
         resp = urllib.request.urlopen(req, timeout=30)
@@ -367,6 +473,25 @@ def _filter_findings_for_group(findings: list, group: dict, already_matched: set
     excludes  = [e.lower() for e in group.get("excludes", [])]
     cp_source = group.get("cp_source", "")
     catch_all = group.get("catch_all_msrc", False)
+    prod_filt = [p.lower() for p in group.get("product_filter", [])]
+
+    def _version_ok(f: dict) -> bool:
+        """Restricts a group to specific product versions (product_filter).
+        The CVE title names the component, never the version, so this checks
+        affected_versions instead.
+
+        Findings without version data are NOT excluded: only a minority of Red
+        Hat CVEs carry package data, and in a security report an uncertain
+        inclusion beats a silent loss. The filter only removes what is
+        demonstrably out of scope.
+        """
+        if not prod_filt:
+            return True
+        versions = f.get("affected_versions") or []
+        if not versions:
+            return True
+        hay = " | ".join(versions).lower()
+        return any(p in hay for p in prod_filt)
 
     matched = []
     raw_count = 0
@@ -378,6 +503,20 @@ def _filter_findings_for_group(findings: list, group: dict, already_matched: set
         if cp_source and src and cp_source not in src:
             if not catch_all:
                 continue
+
+        if not _version_ok(f):
+            continue
+
+        # A group bound to a single source (cp_source) takes everything from
+        # that source: the source check above has already done the selecting,
+        # and the keywords below only match a CVE whose summary happens to
+        # name a package. For Red Hat that reduced 79 findings to 5.
+        if cp_source == "rhel" and src == "rhel":
+            raw_count += 1
+            if cve_id not in already_matched:
+                matched.append(f)
+                already_matched.add(cve_id)
+            continue
 
         text = (f.get("matching_text") or f.get("summary") or "").lower()
         title = (f.get("summary") or "").lower()
@@ -462,7 +601,11 @@ def _build_group_prompt(group: dict, group_findings: list, month: str, year: str
             expl  = ' [Exploit: Yes]' if f.get('has_exploit') else ''
             rce   = ' [RCE]' if f.get('is_rce') else ''
             ssvc  = f" [SSVC: {f['ssvc_decision'].upper()}]" if f.get('ssvc_decision') else ''
-            findings_lines.append(f"- {cve} (CVSS {score:.1f}, {sev}){expl}{rce}{ssvc}: {summ}")
+            impact = f.get('impact') or ''
+            imp   = f" [{impact}]" if impact and impact != 'n/a' else ''
+            vers  = ", ".join(_versions_for_display(f, group))[:180]
+            findings_lines.append(f"- {cve} (CVSS {score:.1f}, {sev}){imp}{expl}{rce}{ssvc}: {summ}"
+                                  + (f"\n  Betroffen: {vers}" if vers else ''))
         findings_text = "\n".join(findings_lines)
     else:
         findings_text = "(Keine spezifischen Schwachstellen in den Hersteller-Feeds gelistet)"
