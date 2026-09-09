@@ -1,0 +1,196 @@
+{
+  "_readme": [
+    "Product inventory for the report. Copy this file to groups.json and edit",
+    "it to match your estate — groups.json is gitignored, so your inventory",
+    "never lands in the repository. Without it the values below are used.",
+    "",
+    "product_groups[].product_filter is optional. Without it a group takes",
+    "every CVE its keywords match. With it, a CVE also has to affect one of",
+    "the listed products; the names are matched case-insensitively as",
+    "substrings against the vendor's product list (MSRC product names read",
+    "'Windows 11 Version 23H2 for x64-based Systems'). Findings that carry no",
+    "product data at all are kept either way — at Red Hat that is the",
+    "majority, and in a security report an uncertain inclusion beats a silent",
+    "loss.",
+    "",
+    "retired_platforms applies across all groups: those entries disappear",
+    "from every 'affected' line, and a CVE that affects only such platforms",
+    "never enters the report. Use this rather than a product_filter on the",
+    "catch-all group — that group is the last stop for anything unmatched, so",
+    "filtering it would drop CVEs from the report entirely."
+  ],
+  "retired_platforms": [
+    "windows server 2012",
+    "windows 10",
+    "rhel 7",
+    "rhel 8"
+  ],
+  "product_groups": [
+    {
+      "name": "Windows Server",
+      "versions": "Windows Server 2019, 2022, 2025",
+      "cp_source": "msrc",
+      "keywords": [
+        "windows server",
+        "windows active directory",
+        "active directory domain",
+        "windows netlogon",
+        "windows hyper-v",
+        "windows dns",
+        "windows deployment",
+        "windows remote desktop",
+        "windows container"
+      ],
+      "excludes": [],
+      "product_filter": [
+        "windows server 2019",
+        "windows server 2022",
+        "windows server 2025"
+      ],
+      "search_term": "Patch Tuesday {month} {year} Windows Server CVE",
+      "color": "#004578"
+    },
+    {
+      "name": "Windows Client",
+      "versions": "Windows 11 24H2, 25H2 (x64)",
+      "cp_source": "msrc",
+      "keywords": [
+        "windows shell",
+        "windows gdi",
+        "windows media",
+        "windows kernel",
+        "windows print",
+        "windows security",
+        "windows ui",
+        "windows app",
+        "windows installer",
+        "windows update",
+        "windows hello",
+        "windows search",
+        "windows storage",
+        "windows wifi",
+        "windows bluetooth",
+        "windows graphics",
+        "windows 11",
+        "windows client"
+      ],
+      "excludes": [
+        "windows server"
+      ],
+      "product_filter": [
+        "windows 11 version 24h2 for x64",
+        "windows 11 version 25h2 for x64"
+      ],
+      "search_term": "Patch Tuesday {month} {year} Windows 11 24H2 25H2 CVE",
+      "color": "#0078d4"
+    },
+    {
+      "name": "Red Hat Enterprise Linux (RHEL)",
+      "versions": "RHEL 9, 10",
+      "cp_source": "rhel",
+      "keywords": [
+        "rhel",
+        "red hat",
+        "kernel",
+        "glibc",
+        "openssl",
+        "systemd",
+        "bash",
+        "python",
+        "openssh",
+        "bind",
+        "sudo",
+        "pam"
+      ],
+      "excludes": [],
+      "product_filter": [
+        "rhel 9",
+        "rhel 10"
+      ],
+      "search_term": "Red Hat Security Advisories {month} {year} RHEL 9 10 RHSA CVE",
+      "color": "#cc0000"
+    },
+    {
+      "name": "Exchange Server & SharePoint",
+      "versions": "Exchange Server 2019/SE, SharePoint Server 2019/SE",
+      "cp_source": "msrc",
+      "keywords": [
+        "exchange server",
+        "sharepoint server",
+        "outlook web access",
+        "exchange owa",
+        "sharepoint enterprise"
+      ],
+      "excludes": [],
+      "search_term": "Patch Tuesday {month} {year} Exchange SharePoint CVE",
+      "color": "#107c41"
+    },
+    {
+      "name": "Microsoft 365 & Office",
+      "versions": "Office 365 CtR, Office 2016, Project, Visio, Access",
+      "cp_source": "msrc",
+      "keywords": [
+        "office",
+        "excel",
+        "word",
+        "powerpoint",
+        "outlook",
+        "access",
+        "visio",
+        "project",
+        "microsoft 365",
+        "office 365"
+      ],
+      "excludes": [
+        "exchange server",
+        "sharepoint server"
+      ],
+      "product_filter": [
+        "microsoft 365 apps for enterprise",
+        "microsoft office 2016",
+        "microsoft access 2016",
+        "microsoft project",
+        "microsoft visio",
+        "microsoft office 365"
+      ],
+      "search_term": "Patch Tuesday {month} {year} Microsoft Office 365 CVE",
+      "color": "#d83b01"
+    },
+    {
+      "name": "Entwickler-Tools & Runtimes",
+      "versions": ".NET 3.5/4.8/6/8, Visual Studio Code, Visual C++",
+      "cp_source": "msrc",
+      "keywords": [
+        ".net core",
+        ".net framework",
+        "visual studio",
+        "visual c++",
+        "powershell",
+        "typescript",
+        "c#"
+      ],
+      "excludes": [],
+      "search_term": "Patch Tuesday {month} {year} .NET Visual Studio CVE",
+      "color": "#5c2d91"
+    },
+    {
+      "name": "SQL Server & Sonstige Microsoft-Produkte",
+      "versions": "SQL Server 2005-2025, Teams, Edge, Defender, WebView2, OneDrive",
+      "cp_source": "msrc",
+      "catch_all_msrc": true,
+      "keywords": [
+        "sql server",
+        "teams",
+        "edge",
+        "defender",
+        "webview2",
+        "onedrive",
+        "azure arc",
+        "ssms"
+      ],
+      "excludes": [],
+      "search_term": "Patch Tuesday {month} {year} SQL Server Edge Defender CVE",
+      "color": "#008272"
+    }
+  ]
+}

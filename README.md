@@ -76,6 +76,60 @@ REPORT_TO=security@example.com
 
 ---
 
+## 🗂️ Product Inventory (`groups.json`)
+
+Which products the report covers is configuration, not code. Copy the
+committed example and edit your copy — `groups.json` is gitignored, so your
+estate never lands in the repository:
+
+```bash
+cp groups.example.json groups.json
+```
+
+Without a `groups.json`, the example is used as-is.
+
+Each entry under `product_groups` becomes one section of the report:
+
+```jsonc
+{
+  "name": "Windows Client",
+  "versions": "Windows 11 24H2, 25H2 (x64)",   // shown in the section header
+  "cp_source": "msrc",                          // msrc | rhel
+  "keywords": ["windows shell", "windows 11"],  // matched against the CVE title
+  "excludes": ["windows server"],
+  "product_filter": [                           // optional, see below
+    "windows 11 version 24h2 for x64",
+    "windows 11 version 25h2 for x64"
+  ]
+}
+```
+
+**`keywords` decide the section, `product_filter` decides the version.** A CVE
+title names the component ("Windows Hyper-V", "Microsoft Word"), never the
+build — so restricting a group to specific releases needs the vendor's product
+list, which is what `product_filter` matches against, case-insensitively and as
+a substring. MSRC product names read `Windows 11 Version 24H2 for x64-based
+Systems`; Red Hat versions are derived from the `.elN` suffix of the package
+NVRs.
+
+Findings that carry **no** product data are kept regardless. At Red Hat that is
+most of them, and in a security report an uncertain inclusion beats a silent
+loss.
+
+**`retired_platforms`** applies across every group:
+
+```json
+"retired_platforms": ["windows server 2012", "windows 10", "rhel 7"]
+```
+
+Those entries disappear from every "affected" line, and a CVE that affects
+*only* such platforms never enters the report. A CVE that also affects a
+supported platform is kept in full. Use this rather than adding a
+`product_filter` to the catch-all group — that group is the last stop for
+anything unmatched, so filtering it would drop CVEs from the report entirely.
+
+---
+
 ## 📡 API Endpoints
 
 - `GET /` — Web Dashboard UI

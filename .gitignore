@@ -7,3 +7,8 @@ venv/
 .venv/
 .idea/
 .vscode/
+
+# Your own product inventory — copy groups.example.json to groups.json and
+# edit it there. Keeping it out of the repo means a public checkout never
+# carries someone's estate.
+groups.json

@@ -73,120 +73,40 @@ import threading as _threading
 _cancel_event = _threading.Event()
 
 # ─── Product Groups ────────────────────────────────────────────────────────────
-
-PRODUCT_GROUPS = [
-    {
-        "name": "Windows Server",
-        "versions": "Windows Server 2016, 2019, 2022, 2025",
-        "cp_source": "msrc",
-        "keywords": ["windows server", "windows active directory", "active directory domain",
-                     "windows netlogon", "windows hyper-v", "windows dns", "windows deployment",
-                     "windows remote desktop", "windows container"],
-        "excludes": [],
-        # Only the server releases in use. Also keeps out CVEs that affect
-        # nothing but Windows Server 2012/2012 R2.
-        "product_filter": ["windows server 2016", "windows server 2019",
-                           "windows server 2022", "windows server 2025"],
-        "search_term": "Patch Tuesday {month} {year} Windows Server CVE",
-        "color": "#004578",
-    },
-    {
-        "name": "Windows Client",
-        "versions": "Windows 11 23H2, 25H2 (x64)",
-        "cp_source": "msrc",
-        "keywords": ["windows shell", "windows gdi", "windows media", "windows kernel",
-                     "windows print", "windows security", "windows ui", "windows app",
-                     "windows installer", "windows update", "windows hello", "windows search",
-                     "windows storage", "windows wifi", "windows bluetooth", "windows graphics",
-                     "windows 11", "windows client"],
-        "excludes": ["windows server"],
-        # Restrict the group to the builds actually in use. MSRC product names
-        # read "Windows 11 Version 23H2 for x64-based Systems"; ARM64 and the
-        # other releases drop out. Matched case-insensitively because Microsoft
-        # writes "Version" both capitalised and lowercase (26H1).
-        "product_filter": ["windows 11 version 23h2 for x64",
-                           "windows 11 version 25h2 for x64"],
-        "search_term": "Patch Tuesday {month} {year} Windows 11 23H2 25H2 CVE",
-        "color": "#0078d4",
-    },
-    {
-        "name": "Red Hat Enterprise Linux (RHEL)",
-        "versions": "RHEL 8, 9, 10",
-        "cp_source": "rhel",
-        "keywords": ["rhel", "red hat", "kernel", "glibc", "openssl", "systemd",
-                     "bash", "python", "openssh", "bind", "sudo", "pam"],
-        "excludes": [],
-        # RHEL 7 is out (EOL), RHEL 10 is in. Versions come from the .elN
-        # suffixes of the package NVRs, see _rhel_versions_from_packages().
-        # CVEs without package data — the majority at Red Hat — stay in.
-        "product_filter": ["rhel 8", "rhel 9", "rhel 10"],
-        "search_term": "Red Hat Security Advisories {month} {year} RHEL 8 9 10 RHSA CVE",
-        "color": "#cc0000",
-    },
-    {
-        "name": "Exchange Server & SharePoint",
-        "versions": "Exchange Server 2019/SE, SharePoint Server 2019/SE",
-        "cp_source": "msrc",
-        "keywords": ["exchange server", "sharepoint server", "outlook web access",
-                     "exchange owa", "sharepoint enterprise"],
-        "excludes": [],
-        "search_term": "Patch Tuesday {month} {year} Exchange SharePoint CVE",
-        "color": "#107c41",
-    },
-    {
-        "name": "Microsoft 365 & Office",
-        "versions": "Office 365 CtR, Office 2016, Project, Visio, Access",
-        "cp_source": "msrc",
-        "keywords": ["office", "excel", "word", "powerpoint", "outlook", "access",
-                     "visio", "project", "microsoft 365", "office 365"],
-        "excludes": ["exchange server", "sharepoint server"],
-        # Office 365 CtR is called "Microsoft 365 Apps for Enterprise" in the
-        # MSRC feed. The filter also keeps out CVEs that only got in through a
-        # title keyword without affecting an Office product — "Windows Routing
-        # and Remote Access Service (RRAS)" used to match "access".
-        "product_filter": ["microsoft 365 apps for enterprise",
-                           "microsoft office 2016", "microsoft access 2016",
-                           "microsoft project", "microsoft visio",
-                           "microsoft office 365"],
-        "search_term": "Patch Tuesday {month} {year} Microsoft Office 365 CVE",
-        "color": "#d83b01",
-    },
-    {
-        "name": "Entwickler-Tools & Runtimes",
-        "versions": ".NET 3.5/4.8/6/8, Visual Studio Code, Visual C++",
-        "cp_source": "msrc",
-        "keywords": [".net core", ".net framework", "visual studio", "visual c++",
-                     "powershell", "typescript", "c#"],
-        "excludes": [],
-        "search_term": "Patch Tuesday {month} {year} .NET Visual Studio CVE",
-        "color": "#5c2d91",
-    },
-    {
-        "name": "SQL Server & Sonstige Microsoft-Produkte",
-        "versions": "SQL Server 2005-2025, Teams, Edge, Defender, WebView2, OneDrive",
-        "cp_source": "msrc",
-        "catch_all_msrc": True,
-        "keywords": ["sql server", "teams", "edge", "defender", "webview2",
-                     "onedrive", "azure arc", "ssms"],
-        "excludes": [],
-        "search_term": "Patch Tuesday {month} {year} SQL Server Edge Defender CVE",
-        "color": "#008272",
-    },
-]
-
-# Retired platforms. Anything listed here disappears from every "affected"
-# line, and a CVE that affects ONLY such platforms never enters the report.
 #
-# This is deliberately global rather than a per-group product_filter: the
-# catch-all group is the last stop for anything unmatched, so a filter there
-# would drop CVEs from the report entirely. CVEs that also affect a supported
-# platform are kept in full — only the retired entries vanish from the list.
-RETIRED_PLATFORMS = [
-    "windows server 2012",   # incl. R2, EOL 10/2023
-    "windows 10",            # fleet runs Windows 11 23H2/25H2
-    "rhel 7",                # EOL 06/2024
-]
+# The inventory lives in groups.json, not in this file, so a deployment can be
+# scoped to its own estate without editing code — and so a public checkout does
+# not carry someone's product list. groups.json is gitignored; the committed
+# groups.example.json documents the format and provides the fallback.
 
+GROUPS_FILE    = BASE_DIR / "groups.json"
+GROUPS_EXAMPLE = BASE_DIR / "groups.example.json"
+
+
+def _load_group_config() -> tuple[list, list]:
+    """(product_groups, retired_platforms) from groups.json, else from
+    groups.example.json. A malformed file is fatal rather than silently
+    empty: running with no groups would produce a report with no findings,
+    which is exactly the kind of quiet emptiness this generator must not
+    publish."""
+    for path in (GROUPS_FILE, GROUPS_EXAMPLE):
+        if not path.exists():
+            continue
+        try:
+            cfg = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"[config] {path.name}: invalid JSON — {e}")
+        groups = cfg.get("product_groups") or []
+        if not groups:
+            raise SystemExit(f"[config] {path.name}: 'product_groups' is empty")
+        print(f"[config] {len(groups)} product groups from {path.name}")
+        return groups, cfg.get("retired_platforms") or []
+    raise SystemExit(
+        f"[config] neither {GROUPS_FILE.name} nor {GROUPS_EXAMPLE.name} found "
+        f"in {BASE_DIR}")
+
+
+PRODUCT_GROUPS, RETIRED_PLATFORMS = _load_group_config()
 
 def _is_retired(version: str) -> bool:
     v = (version or "").lower()
