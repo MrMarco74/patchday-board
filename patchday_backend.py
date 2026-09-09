@@ -140,6 +140,54 @@ _MONTH_DE_TO_EN = {
 
 # ─── Direct Vendor APIs (MSRC / Red Hat) ──────────────────────────────────────
 
+# SSVC levels: label, icon and colours. Single source for both the legend in
+# the report header and the badge on each CVE — keeping them apart is how a
+# legend ends up describing colours the badges do not use.
+_SSVC_STYLES = {
+    'act':    ('Act',    '&#128680;', '#b71c1c', '#fdecea', '#ef9a9a',
+               'Act now — actively exploited, immediate risk'),
+    'attend': ('Attend', '&#9888;',   '#e65100', '#fff3e0', '#ffcc80',
+               'Act soon — elevated urgency, patch with priority'),
+    'track*': ('Track*', '&#128065;', '#f57f17', '#fffde7', '#ffe082',
+               'Watch closely — potentially relevant'),
+    'track':  ('Track',  '&#10003;',  '#2e7d32', '#e8f5e9', '#a5d6a7',
+               'Track — no immediate action required'),
+}
+
+# Same palette as _SSVC_STYLES, as openpyxl fills for the XLSX export.
+_SSVC_XLSX_FILL = {
+    'act': 'FFCDD2', 'attend': 'FFE0B2', 'track*': 'FFFDE7', 'track': 'E8F5E9',
+}
+
+
+def _ssvc_badge(decision: str) -> str:
+    """Coloured HTML badge for an SSVC decision. Without a decision it renders
+    a neutral "pending" so the slot is never simply blank."""
+    key = (decision or '').strip().lower()
+    if key in _SSVC_STYLES:
+        label, icon, fg, bg, border, _ = _SSVC_STYLES[key]
+    else:
+        label, icon, fg, bg, border = 'pending', '&#8212;', '#616161', '#f5f5f5', '#bdbdbd'
+    return (
+        f'<span style="display:inline-block;background:{bg};color:{fg};'
+        f'border:1px solid {border};border-radius:3px;padding:1px 7px;font-size:11px;'
+        f'font-weight:700;font-family:monospace;white-space:nowrap;">{icon} SSVC: {label}</span>'
+    )
+
+
+def _ssvc_legend() -> str:
+    """Legend for the report header, from the same palette as the badges."""
+    rows = []
+    for key in ('act', 'attend', 'track*', 'track'):
+        label, icon, fg, bg, border, desc = _SSVC_STYLES[key]
+        rows.append(
+            f'<span style="background:{bg};color:{fg};border:1px solid {border};'
+            f'border-radius:4px;padding:4px 12px;font-weight:700;">{icon} {label}</span>'
+            f'<span style="color:#555;align-self:center;margin-right:8px;">{desc}</span>'
+        )
+    return "\n    ".join(rows)
+
+
 # SSVC levels and their sort rank. The rank ends up on each finding as
 # ssvc_priority and decides which CVEs survive the per-group cap.
 _SSVC_RANK = {'act': 1, 'attend': 2, 'track*': 3, 'track': 4}
@@ -562,11 +610,12 @@ def _build_group_prompt(group: dict, group_findings: list, month: str, year: str
             summ  = (f.get('summary') or f.get('matching_text') or '')[:250]
             expl  = ' [Exploit: Yes]' if f.get('has_exploit') else ''
             rce   = ' [RCE]' if f.get('is_rce') else ''
-            ssvc  = f" [SSVC: {f['ssvc_decision'].upper()}]" if f.get('ssvc_decision') else ''
+            ssvc  = _ssvc_badge(f.get('ssvc_decision'))
             impact = f.get('impact') or ''
             imp   = f" [{impact}]" if impact and impact != 'n/a' else ''
             vers  = ", ".join(_versions_for_display(f, group))[:180]
-            findings_lines.append(f"- {cve} (CVSS {score:.1f}, {sev}){imp}{expl}{rce}{ssvc}: {summ}"
+            findings_lines.append(f"- {cve} (CVSS {score:.1f}, {sev}){imp}{expl}{rce}"
+                                  f" | SSVC_BADGE: {ssvc}: {summ}"
                                   + (f"\n  Betroffen: {vers}" if vers else ''))
         findings_text = "\n".join(findings_lines)
     else:
@@ -590,7 +639,8 @@ ANFORDERUNGEN AN DIE OUTPUT-SEKTION:
 4. Falls Relevante Schwachstellen vorliegen:
    - Führe die wichtigsten CVEs als strukturierte Tabelle oder Karten auf.
    - Zeige CVE-ID (verlinkt auf official update guide/NVD), CVSS-Score, Schweregrad und Kurzbeschreibung.
-   - Zeige SSVC-Badge falls vorhanden (Act=rot, Attend=orange, Track*=gelb, Track=grün).
+   - Das SSVC_BADGE-HTML aus den Findings UNVERÄNDERT übernehmen (Farben und Text
+     nicht anpassen) und die Einstufung nicht zusätzlich als Text wiederholen.
 5. Falls keine relevanten Schwachstellen vorliegen:
    - Ausführlicher Satz: "Für den Patchday {month} {year} sind keine kritischen Schwachstellen für {gname} bekannt."
 6. Gib AUSSCHLIESSLICH das HTML dieser einen <div ...>...</div> Sektion aus."""
@@ -690,9 +740,16 @@ def _render_xlsx(groups_data: list, xlsx_path: Path, month: str, year: str) -> t
                     f.get('ssvc_decision', ''),
                     summ
                 ]
+                # "Gruppe" steht vor COLS, die Spalte verschiebt sich um eins
+                ssvc_col  = ['Gruppe'] + COLS
+                ssvc_col  = ssvc_col.index('SSVC Decision') + 1
+                ssvc_hex  = _SSVC_XLSX_FILL.get((f.get('ssvc_decision') or '').lower())
                 for ci, val in enumerate(row_vals, 1):
                     cell = ws_all.cell(row=ri, column=ci, value=val)
                     cell.border = _BORDER; cell.alignment = _WRAP
+                    if ci == ssvc_col and ssvc_hex:
+                        cell.fill = PatternFill('solid', fgColor=ssvc_hex)
+                        cell.font = Font(bold=True, size=10)
                 ri += 1
 
         wb.save(xlsx_path)
@@ -803,6 +860,12 @@ def _generate_stream(model: str, month: str, year: str):
   Übersicht: Microsoft &amp; Red Hat Patchday &ndash; {month} {year}
 </h1>
 <p style="text-align:center;margin-bottom:25px;">{source_badge}</p>
+<div style="background:#f8f9fa;border:1px solid #dee2e6;border-left:4px solid #495057;border-radius:6px;padding:18px 22px;margin-bottom:28px;font-size:13px;">
+  <strong style="font-size:14px;color:#212529;">&#128736; SSVC (Stakeholder-Specific Vulnerability Categorization)</strong>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">
+    {_ssvc_legend()}
+  </div>
+</div>
 
 {''.join(html_sections_ordered)}
 
