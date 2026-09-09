@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSVC in Patchday Board</title>
+<style>
+:root { color-scheme: light; }
+body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+       line-height: 1.65; color: #24292f; background: #f4f4f4;
+       margin: 0; padding: 24px; }
+.wrap { max-width: 940px; margin: 0 auto; background: #fff; padding: 40px 48px;
+        border: 1px solid #d8dee4; border-radius: 8px; }
+h1 { font-size: 26px; color: #004578; margin: 0 0 6px; }
+h2 { font-size: 19px; margin: 34px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #eaeef2; }
+h3 { font-size: 15px; margin: 22px 0 8px; color: #444; }
+p { margin: 10px 0; }
+code { background: #f0f2f5; padding: 1px 5px; border-radius: 3px;
+       font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
+      padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.5; }
+.tw { overflow-x: auto; margin: 14px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { background: #004578; color: #fff; text-align: left; padding: 8px 10px;
+     font-size: 12px; white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid #eaeef2; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+ul { margin: 10px 0; padding-left: 22px; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid #eaeef2; margin: 30px 0; }
+strong { color: #1a1a1a; }
+.foot { margin-top: 34px; padding-top: 14px; border-top: 1px solid #eaeef2;
+        font-size: 12px; color: #777; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SSVC in Patchday Board</h1>
+<p>How this project arrives at an SSVC rating: which fields it reads, which rules it applies, and where the limits are.</p>
+<p>The code in <code>patchday_backend.py</code> is authoritative; this document describes it rather than replacing it.</p>
+<hr>
+<h2>1. What "SSVC" means here — and what it does not</h2>
+<p>SSVC (*Stakeholder-Specific Vulnerability Categorization*, CISA/SEI) is a decision tree, not a score. It leads across several axes to one of four recommendations:</p>
+<div class="tw"><table><thead><tr><th>Level</th><th>Meaning</th><th>Urgency</th></tr></thead><tbody><tr><td><span style="background:#fdecea;color:#b71c1c;padding:1px 7px;border-radius:3px;font-weight:700;">Act</span></td><td>Act now — actively exploited, immediate risk</td><td>patch out of band</td></tr><tr><td><span style="background:#fff3e0;color:#e65100;padding:1px 7px;border-radius:3px;font-weight:700;">Attend</span></td><td>Act soon — elevated urgency</td><td>prioritise in the next cycle</td></tr><tr><td><span style="background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:3px;font-weight:700;">Track</span></td><td>Watch closely — potentially relevant</td><td>monitor, re-evaluate</td></tr><tr><td><span style="background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:3px;font-weight:700;">Track</span></td><td>Track — no immediate action required</td><td>normal patch cycle</td></tr></tbody></table></div>
+<p><strong>This project implements a deliberately reduced heuristic, not the full tree.</strong> It reads what the vendor feeds actually provide: exploitation status, attack type and CVSS. The remaining SSVC axes need signals the feeds do not carry — see [Limits](#7-limits).</p>
+<p>Ratings produced here are therefore <strong>not comparable</strong> with ratings from a full SSVC implementation that has richer inputs.</p>
+<hr>
+<h2>2. Sources and input fields</h2>
+<h3>2.1 Microsoft MSRC — CVRF v3.0</h3>
+<p>Endpoint: <code>https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/&lt;YYYY&gt;-&lt;Mon&gt;</code></p>
+<div class="tw"><table><thead><tr><th>Value</th><th>Origin in the feed</th><th>Derivation</th></tr></thead><tbody><tr><td><code>score</code></td><td><code>Vulnerability.CVSSScoreSets[0].BaseScore</code></td><td>first score set, no aggregation</td></tr><tr><td><code>severity</code></td><td><code>Threats[]</code> where <code>Type == 3</code></td><td>first non-empty value (Critical / Important / Moderate / Low)</td></tr><tr><td><code>impact</code></td><td><code>Threats[]</code> where <code>Type == 0</code></td><td>first non-empty value (Remote Code Execution, Elevation of Privilege, …)</td></tr><tr><td><code>is_rce</code></td><td><code>Threats[]</code> where <code>Type == 0</code></td><td>true if an impact entry contains <code>remote code execution</code></td></tr><tr><td><code>has_exploit</code></td><td><code>Threats[]</code> where <code>Type == 1</code></td><td>field <code>Exploited</code> == <code>Yes</code></td></tr><tr><td><code>is_disclosed</code></td><td><code>Threats[]</code> where <code>Type == 1</code></td><td>field <code>Publicly Disclosed</code> == <code>Yes</code></td></tr></tbody></table></div>
+<p>The type mapping is verified against the <code>2026-Sep</code> feed. <strong>Type 0 is the impact, type 3 is the severity</strong> — not the other way round.</p>
+<p>Exploit status arrives as a compound string such as <code>Publicly Disclosed:No;Exploited:Yes;Latest Software Release:Exploitation Detected</code>. It is split <strong>field by field</strong>. Searching the whole string for <code>yes</code> would misread <code>Publicly Disclosed:Yes;Exploited:No</code> as exploited.</p>
+<h3>2.2 Red Hat — Security Data API</h3>
+<p>Endpoint: <code>https://access.redhat.com/hydra/rest/securitydata/cve.json</code></p>
+<div class="tw"><table><thead><tr><th>Value</th><th>Origin</th><th>Derivation</th></tr></thead><tbody><tr><td><code>severity</code></td><td><code>severity</code></td><td>only <code>critical</code>, <code>important</code>, <code>high</code> are kept, everything else is dropped</td></tr><tr><td><code>score</code></td><td><code>cvss3_score</code>, else <code>cvss_score</code></td><td>0.0 if both are missing</td></tr><tr><td><code>is_rce</code></td><td><code>bugzilla_description</code></td><td>text search for <code>code execution</code>, <code> rce</code>, <code>arbitrary code</code></td></tr><tr><td><code>has_exploit</code></td><td>—</td><td><strong>always <code>False</code></strong>; the API carries no exploitation status</td></tr></tbody></table></div>
+<hr>
+<h2>3. The decision function</h2>
+<pre><code>def _ssvc_decision(has_exploit, is_rce, score, disclosed=False):
+    if has_exploit:                 return &#x27;act&#x27;
+    if is_rce and score &gt;= 8.0:     return &#x27;attend&#x27;
+    if disclosed or score &gt;= 7.0:   return &#x27;track*&#x27;
+    return &#x27;track&#x27;</code></pre>
+<p>As a sequence:</p>
+<div class="tw"><table><thead><tr><th>#</th><th>Condition</th><th>Result</th><th>Rationale</th></tr></thead><tbody><tr><td>1</td><td><code>has_exploit</code></td><td><strong>act</strong></td><td>exploitation is established — no other signal relativises it</td></tr><tr><td>2</td><td><code>is_rce</code> and <code>score &gt;= 8.0</code></td><td><strong>attend</strong></td><td>remote code execution at a high base score</td></tr><tr><td>3</td><td><code>disclosed</code> or <code>score &gt;= 7.0</code></td><td><strong>track\</strong>*</td><td>publicly known, or a high base score — watch it</td></tr><tr><td>4</td><td>otherwise</td><td><strong>track</strong></td><td>normal cycle</td></tr></tbody></table></div>
+<p>The order is the statement: <strong>exploitation beats attack vector, which beats CVSS.</strong> An actively exploited flaw at CVSS 6.5 outranks a theoretical one at 9.8.</p>
+<h3>3.1 What actually arrives per source</h3>
+<div class="tw"><table><thead><tr><th>Source</th><th><code>has_exploit</code></th><th><code>is_rce</code></th><th><code>score</code></th><th>reachable levels</th></tr></thead><tbody><tr><td>MSRC</td><td>from feed</td><td>from feed</td><td>from feed</td><td>act, attend, track*, track</td></tr><tr><td>Red Hat</td><td>never</td><td>text heuristic</td><td>from feed</td><td>attend, track*, track</td></tr></tbody></table></div>
+<p><strong>Red Hat never reaches <code>act</code>.</strong> Not because nothing there is exploited, but because the API does not carry that information. Treat the absence as unknown, not as evidence of safety.</p>
+<h3>3.2 The relevance filter comes first</h3>
+<p>A filter decides what enters the report at all, before any rating happens:</p>
+<pre><code>MSRC:  severity in {critical, high, important}  OR  score &gt;= 7.0
+       OR has_exploit  OR  is_rce
+RHEL:  severity in {critical, important, high}</code></pre>
+<p>Whatever is dropped here gets no SSVC level and never appears. The distribution of levels in a report therefore describes <strong>the filtered subset, not the feed</strong>.</p>
+<hr>
+<h2>4. Priority, sorting and selection</h2>
+<p>The level becomes a numeric rank:</p>
+<pre><code>_SSVC_RANK = {&#x27;act&#x27;: 1, &#x27;attend&#x27;: 2, &#x27;track*&#x27;: 3, &#x27;track&#x27;: 4}</code></pre>
+<p>It is stored on the finding as <code>ssvc_priority</code> and has two effects.</p>
+<p><strong>Sorting within a product group</strong> — <code>(ssvc_priority, -score)</code>, so SSVC before CVSS.</p>
+<p><strong>Selection for the summary</strong> — only the first <code>LLM_SAMPLE_PER_GROUP</code> (currently 30) findings of a group go into the LLM prompt. That is a context-window limit. The <strong>complete list</strong> appears regardless, in the collapsible per-group table and in the XLSX, both built without a model.</p>
+<p>Sorting by SSVC first is not cosmetic. Under pure CVSS sorting an actively exploited CVE at 7.8 dropped out of the summary in September 2026, because thirty entries at 9.8 sat ahead of it.</p>
+<hr>
+<h2>5. Presentation</h2>
+<p>Colour and label come from one definition (<code>_SSVC_STYLES</code>), which feeds both the legend in the report header and the badges on individual CVEs — legend and badge cannot drift apart.</p>
+<div class="tw"><table><thead><tr><th>Level</th><th>Text</th><th>Background</th><th>XLSX fill</th></tr></thead><tbody><tr><td><span style="background:#fdecea;color:#b71c1c;padding:1px 7px;border-radius:3px;font-weight:700;">Act</span></td><td><code>#b71c1c</code></td><td><code>#fdecea</code></td><td><code>FFCDD2</code></td></tr><tr><td><span style="background:#fff3e0;color:#e65100;padding:1px 7px;border-radius:3px;font-weight:700;">Attend</span></td><td><code>#e65100</code></td><td><code>#fff3e0</code></td><td><code>FFE0B2</code></td></tr><tr><td><span style="background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:3px;font-weight:700;">Track</span></td><td><code>#f57f17</code></td><td><code>#fffde7</code></td><td><code>FFFDE7</code></td></tr><tr><td><span style="background:#e8f5e9;color:#2e7d32;padding:1px 7px;border-radius:3px;font-weight:700;">Track</span></td><td><code>#2e7d32</code></td><td><code>#e8f5e9</code></td><td><code>E8F5E9</code></td></tr></tbody></table></div>
+<p>Without a rating a neutral "pending" is shown rather than an empty slot. In the XLSX the <code>SSVC Decision</code> column is filled accordingly.</p>
+<hr>
+<h2>6. Configuration</h2>
+<p>The rating itself is not configurable — it is a function of the feed data. What *is* configurable, in <code>groups.json</code>, is which findings reach it:</p>
+<ul><li><code>product_groups[].product_filter</code> restricts a group to specific product</li></ul>
+<p>  versions.</p>
+<ul><li><code>retired_platforms</code> removes decommissioned platforms across all groups; a CVE</li></ul>
+<p>  affecting only those never enters the report and therefore gets no rating.</p>
+<p>See <code>groups.example.json</code> and the README.</p>
+<hr>
+<h2>7. Limits</h2>
+<p><strong>The Mission &amp; Well-being axis is absent.</strong> Real SSVC weighs the business value of the affected system. The vendor feeds carry no such mapping, so this implementation rates the vulnerability, not its relevance to a particular host. Two machines with the same CVE get the same level, whether one is a domain controller and the other a test box.</p>
+<p><strong>Automatable and Technical Impact are not separate axes here.</strong> <code>is_rce</code> combined with <code>score &gt;= 8.0</code> is a coarse stand-in for both.</p>
+<p><strong><code>is_rce</code> for Red Hat is a text heuristic.</strong> It searches three substrings in the Bugzilla description. An RCE described differently is missed; a description mentioning "code execution" in passing is caught falsely.</p>
+<p><strong>Ratings are a snapshot.</strong> An exploit published after the run does not change them retroactively. The report footer carries generation time and model.</p>
+<hr>
+<h2>8. Where to verify</h2>
+<div class="tw"><table><thead><tr><th>What</th><th>Where</th></tr></thead><tbody><tr><td>Decision function</td><td><code>_ssvc_decision()</code> in <code>patchday_backend.py</code></td></tr><tr><td>Rank and sorting</td><td><code>_SSVC_RANK</code>, <code>_filter_findings_for_group()</code></td></tr><tr><td>MSRC field derivation</td><td><code>_fetch_msrc_findings()</code></td></tr><tr><td>Red Hat field derivation</td><td><code>_fetch_rhel_findings()</code>, therein <code>_parse_entry()</code></td></tr><tr><td>Colours and legend</td><td><code>_SSVC_STYLES</code>, <code>_ssvc_badge()</code>, <code>_ssvc_legend()</code></td></tr><tr><td>Complete findings list</td><td><code>_build_findings_table()</code></td></tr></tbody></table></div>
+<p>Every individual rating can be checked against the report itself: the per-group table shows CVSS, SSVC and impact side by side, and the XLSX adds the <code>KEV</code>, <code>Exploit</code> and <code>RCE</code> flags.</p>
+<p class="foot">Generated from <code>docs/SSVC.md</code> by <code>scripts/build_ssvc_doc.py</code> — edit the Markdown, not this file.</p>
+</div>
+</body>
+</html>

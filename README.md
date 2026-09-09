@@ -76,6 +76,24 @@ REPORT_TO=security@example.com
 
 ---
 
+## 📐 SSVC Rating
+
+How a finding gets its Act / Attend / Track\* / Track level — which feed
+fields feed in, the exact decision function, and what the heuristic
+deliberately does not model — is documented in
+**[`docs/SSVC.md`](docs/SSVC.md)**.
+
+`ssvc_doku.html` is generated from it and published next to each report, so
+the legend in the report header links straight to the explanation:
+
+```bash
+python3 scripts/build_ssvc_doc.py
+```
+
+Edit the Markdown, not the HTML.
+
+---
+
 ## 🗂️ Product Inventory (`groups.json`)
 
 Which products the report covers is configuration, not code. Copy the

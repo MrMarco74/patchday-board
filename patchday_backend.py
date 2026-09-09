@@ -33,6 +33,10 @@ BASE_DIR        = Path(__file__).parent
 OUTPUT_DIR      = BASE_DIR / "output"
 PROMPT_FILE     = BASE_DIR / "prompt.txt"
 SETTINGS_FILE   = BASE_DIR / "settings.json"
+# Explains how the SSVC levels are derived. Generated from docs/SSVC.md
+# by scripts/build_ssvc_doc.py and copied next to the report so the
+# legend in the header can link to it.
+SSVC_DOKU       = BASE_DIR / "ssvc_doku.html"
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -990,6 +994,7 @@ def _generate_stream(model: str, month: str, year: str):
 <p style="text-align:center;margin-bottom:25px;">{source_badge}</p>
 <div style="background:#f8f9fa;border:1px solid #dee2e6;border-left:4px solid #495057;border-radius:6px;padding:18px 22px;margin-bottom:28px;font-size:13px;">
   <strong style="font-size:14px;color:#212529;">&#128736; SSVC (Stakeholder-Specific Vulnerability Categorization)</strong>
+  <a href="ssvc_doku.html" style="float:right;font-size:12px;color:#0067b8;text-decoration:none;">How is this calculated? &rarr;</a>
   <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">
     {_ssvc_legend()}
   </div>
@@ -1007,6 +1012,12 @@ def _generate_stream(model: str, month: str, year: str):
 
     month_slug = month.lower().replace('ä','ae').replace('ö','oe').replace('ü','ue')
     report_name = f"patchday_{year}_{month_slug}"
+
+    # The SSVC documentation accompanies the report: the legend links to it
+    # relatively, so it has to sit in the same directory.
+    if SSVC_DOKU.exists():
+        (OUTPUT_DIR / SSVC_DOKU.name).write_text(
+            SSVC_DOKU.read_text(encoding="utf-8"), encoding="utf-8")
 
     html_path = OUTPUT_DIR / f"{report_name}.html"
     md_path   = OUTPUT_DIR / f"{report_name}.md"
