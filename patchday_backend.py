@@ -240,33 +240,48 @@ def _build_findings_table(group: dict, findings: list) -> str:
     """Every finding of a group as an HTML table.
 
     Deliberately model-free: this list is the record, not the summary. It must
-    not depend on a context window, must invent nothing and omit nothing — the
+    not depend on a context window, invent nothing and omit nothing — the
     generated section above it covers the top LLM_SAMPLE_PER_GROUP, this holds
     all of them.
+
+    Every interpolated value is escaped. It comes from vendor feeds and ends up
+    in a report that may be published; the generated sections are HTML on
+    purpose, this table is plain data. Even without script injection, an
+    unescaped "&" in a product name already produces malformed markup.
     """
     if not findings:
         return ""
+    from html import escape
+
+    td = 'padding:5px 8px;border-bottom:1px solid #eee;'
     rows = []
     for f in findings:
-        cve   = f.get("cve_id", "")
-        src   = (f.get("source") or "").lower()
-        link  = (f"https://msrc.microsoft.com/update-guide/vulnerability/{cve}"
-                 if src == "msrc" else
-                 f"https://access.redhat.com/security/cve/{cve}")
-        vlist = _versions_for_display(f, group)
+        cve_raw = f.get("cve_id", "")
+        cve     = escape(cve_raw)
+        src     = (f.get("source") or "").lower()
+        # Only a well-formed CVE id may go into a URL; otherwise no link.
+        cve_ok  = bool(re.fullmatch(r"CVE-\d{4}-\d{4,}", cve_raw))
+        link    = ((f"https://msrc.microsoft.com/update-guide/vulnerability/{cve_raw}"
+                    if src == "msrc" else
+                    f"https://access.redhat.com/security/cve/{cve_raw}")
+                   if cve_ok else "")
+        vlist   = _versions_for_display(f, group)
         # First version plus a counter instead of the whole list — the full one
         # is in the XLSX, here it would make the table unreadable.
-        vers  = "" if not vlist else (
-            vlist[0][:44] + (f' <span style="color:#999;">+{len(vlist)-1}</span>'
-                             if len(vlist) > 1 else ''))
-        impact = f.get("impact") or ""
-        summ  = (f.get("summary") or "")[:110]
-        td    = 'padding:5px 8px;border-bottom:1px solid #eee;'
+        vers    = "" if not vlist else (
+            escape(vlist[0][:44])
+            + (f' <span style="color:#999;">+{len(vlist) - 1}</span>'
+               if len(vlist) > 1 else ''))
+        impact  = escape(f.get("impact") or "")
+        summ    = escape((f.get("summary") or "")[:110])
+        cve_cell = (f'<a href="{escape(link, quote=True)}" '
+                    f'style="color:#0067b8;text-decoration:none;">{cve}</a>'
+                    if link else cve)
         rows.append(
             '<tr>'
-            f'<td style="{td}white-space:nowrap;">'
-            f'<a href="{link}" style="color:#0067b8;text-decoration:none;">{cve}</a></td>'
-            f'<td style="{td}">{_cvss_badge_compact(f.get("score") or 0, f.get("severity") or "")}</td>'
+            f'<td style="{td}white-space:nowrap;">{cve_cell}</td>'
+            f'<td style="{td}">'
+            f'{_cvss_badge_compact(f.get("score") or 0.0, f.get("severity") or "")}</td>'
             f'<td style="{td}">{_ssvc_badge_compact(f.get("ssvc_decision"))}</td>'
             f'<td style="{td}font-size:11px;color:#555;">'
             f'{impact if impact and impact != "n/a" else "&mdash;"}</td>'
@@ -274,7 +289,7 @@ def _build_findings_table(group: dict, findings: list) -> str:
             f'<td style="{td}font-size:10px;color:#777;">{vers or "&mdash;"}</td>'
             '</tr>'
         )
-    colour = group.get("color", "#495057")
+    colour = escape(group.get("color", "#495057"), quote=True)
     hdr = "".join(
         f'<th style="padding:6px 8px;text-align:left;font-size:11px;color:#fff;'
         f'background:{colour};white-space:nowrap;">{h}</th>'
