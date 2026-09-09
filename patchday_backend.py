@@ -188,6 +188,108 @@ def _ssvc_legend() -> str:
     return "\n    ".join(rows)
 
 
+def _ssvc_badge_compact(decision: str) -> str:
+    """Short form for table rows. The full badge carries nine inline CSS
+    properties; across a thousand rows that is half a megabyte of markup
+    saying nothing extra."""
+    key = (decision or '').strip().lower()
+    if key in _SSVC_STYLES:
+        label, _icon, fg, bg, _b, _d = _SSVC_STYLES[key]
+    else:
+        label, fg, bg = '&mdash;', '#616161', '#f5f5f5'
+    return (f'<span style="background:{bg};color:{fg};padding:1px 5px;'
+            f'border-radius:3px;font-weight:700;">{label}</span>')
+
+
+def _cvss_badge_compact(score: float, severity: str) -> str:
+    """Short form for table rows, see _ssvc_badge_compact."""
+    sev_l = (severity or '').lower()
+    if sev_l == 'critical':
+        fg, bg = '#c62828', '#ffebee'
+    elif sev_l in ('high', 'important'):
+        fg, bg = '#e65100', '#fff3e0'
+    elif sev_l in ('medium', 'moderate'):
+        fg, bg = '#f9a825', '#fffde7'
+    else:
+        fg, bg = '#2e7d32', '#e8f5e9'
+    return (f'<span style="background:{bg};color:{fg};padding:1px 5px;'
+            f'border-radius:3px;font-weight:700;">{score:.1f}</span>')
+
+
+# How many findings per group go into the LLM prompt. Purely a context-window
+# limit: 30 findings are roughly 7.5k tokens. The report itself lists every
+# finding — the complete per-group table is built without a model in
+# _build_findings_table().
+LLM_SAMPLE_PER_GROUP = 30
+
+
+def _append_table_to_section(section: str, table: str) -> str:
+    """Places the complete table inside the model's group card (before its
+    closing </div>) so it inherits the card's frame and colour. If there is no
+    </div> — the model returned broken HTML — it is appended rather than
+    lost."""
+    if not table:
+        return section
+    idx = section.rfind("</div>")
+    if idx == -1:
+        return section + table
+    return section[:idx] + table + section[idx:]
+
+
+def _build_findings_table(group: dict, findings: list) -> str:
+    """Every finding of a group as an HTML table.
+
+    Deliberately model-free: this list is the record, not the summary. It must
+    not depend on a context window, must invent nothing and omit nothing — the
+    generated section above it covers the top LLM_SAMPLE_PER_GROUP, this holds
+    all of them.
+    """
+    if not findings:
+        return ""
+    rows = []
+    for f in findings:
+        cve   = f.get("cve_id", "")
+        src   = (f.get("source") or "").lower()
+        link  = (f"https://msrc.microsoft.com/update-guide/vulnerability/{cve}"
+                 if src == "msrc" else
+                 f"https://access.redhat.com/security/cve/{cve}")
+        vlist = _versions_for_display(f, group)
+        # First version plus a counter instead of the whole list — the full one
+        # is in the XLSX, here it would make the table unreadable.
+        vers  = "" if not vlist else (
+            vlist[0][:44] + (f' <span style="color:#999;">+{len(vlist)-1}</span>'
+                             if len(vlist) > 1 else ''))
+        impact = f.get("impact") or ""
+        summ  = (f.get("summary") or "")[:110]
+        td    = 'padding:5px 8px;border-bottom:1px solid #eee;'
+        rows.append(
+            '<tr>'
+            f'<td style="{td}white-space:nowrap;">'
+            f'<a href="{link}" style="color:#0067b8;text-decoration:none;">{cve}</a></td>'
+            f'<td style="{td}">{_cvss_badge_compact(f.get("score") or 0, f.get("severity") or "")}</td>'
+            f'<td style="{td}">{_ssvc_badge_compact(f.get("ssvc_decision"))}</td>'
+            f'<td style="{td}font-size:11px;color:#555;">'
+            f'{impact if impact and impact != "n/a" else "&mdash;"}</td>'
+            f'<td style="{td}font-size:11px;">{summ}</td>'
+            f'<td style="{td}font-size:10px;color:#777;">{vers or "&mdash;"}</td>'
+            '</tr>'
+        )
+    colour = group.get("color", "#495057")
+    hdr = "".join(
+        f'<th style="padding:6px 8px;text-align:left;font-size:11px;color:#fff;'
+        f'background:{colour};white-space:nowrap;">{h}</th>'
+        for h in ("CVE", "CVSS", "SSVC", "Impact", "Description", "Affected versions"))
+    return (
+        '<details style="margin-top:18px;">'
+        f'<summary style="cursor:pointer;font-weight:700;color:{colour};'
+        f'font-size:13px;padding:6px 0;">All {len(findings)} findings in this '
+        'group (complete list)</summary>'
+        '<div style="overflow-x:auto;margin-top:8px;">'
+        '<table style="border-collapse:collapse;width:100%;font-size:12px;">'
+        f'<thead><tr>{hdr}</tr></thead><tbody>{"".join(rows)}</tbody></table></div></details>'
+    )
+
+
 # SSVC levels and their sort rank. The rank ends up on each finding as
 # ssvc_priority and decides which CVEs survive the per-group cap.
 _SSVC_RANK = {'act': 1, 'attend': 2, 'track*': 3, 'track': 4}
@@ -548,7 +650,10 @@ def _filter_findings_for_group(findings: list, group: dict, already_matched: set
                 matched.append(f)
                 already_matched.add(cve_id)
 
-    matched.sort(key=lambda f: _cvss_priority(f)[0], reverse=True)
+    # SSVC zuerst, dann CVSS: das Sample fuer den Prompt wird vorne
+    # abgeschnitten, eine aktiv ausgenutzte CVE mit mittlerem Score darf dabei
+    # nicht hinter lauter 9.8ern verschwinden.
+    matched.sort(key=lambda f: (f.get('ssvc_priority', 4), -(f.get('score') or 0)))
     return matched, raw_count
 
 # ─── Prompt Formatting ────────────────────────────────────────────────────────
@@ -792,7 +897,11 @@ def _generate_stream(model: str, month: str, year: str):
         search_q                        = group["search_term"].format(month=month, year=year)
         search_text, hits_total, hits_used = _search_searxng(search_q)
         group_findings, cves_raw        = _filter_findings_for_group(findings, group, already_matched)
-        sys_prompt, usr_prompt = _build_group_prompt(group, group_findings, month, year, search_text)
+        # Nur eine Auswahl geht ins Modell — das ist eine Grenze des
+        # Kontextfensters, keine Aussage darueber, was im Bericht steht.
+        # Die vollstaendige Liste kommt aus _build_findings_table().
+        llm_sample = group_findings[:LLM_SAMPLE_PER_GROUP]
+        sys_prompt, usr_prompt = _build_group_prompt(group, llm_sample, month, year, search_text)
         group_jobs.append((i, group, sys_prompt, usr_prompt))
         groups_data.append({
             "name":     group["name"],
@@ -828,14 +937,18 @@ def _generate_stream(model: str, month: str, year: str):
                 idx, gname_orig = future_map[fut]
                 try:
                     idx, grp, section, llm_stats = fut.result()
-                    html_sections[idx] = section
+                    html_sections[idx] = _append_table_to_section(
+                        section, _build_findings_table(grp, groups_data[idx]["findings"]))
                     completed_count += 1
                     words = len(section.split())
                     total_tokens += words
                     yield _sse({"step": "group_done", "msg": f"✓ [{completed_count}/{total_groups}] {grp['name']}: {words} Wörter", "pct": 45 + int(completed_count / total_groups * 40)})
                 except Exception as e:
                     completed_count += 1
-                    html_sections[idx] = f'<div><h2>{gname_orig}</h2><p>Fehler: {e}</p></div>'
+                    # Ohne Zusammenfassung bleibt die Fundliste erhalten.
+                    html_sections[idx] = _append_table_to_section(
+                        f'<div><h2>{gname_orig}</h2><p>Zusammenfassung fehlgeschlagen: {e}</p></div>',
+                        _build_findings_table(PRODUCT_GROUPS[idx], groups_data[idx]["findings"]))
 
     html_sections_ordered = [s for s in html_sections if s]
     yield _sse({"step": "llm_done", "msg": f"Alle {total_groups} Gruppen verarbeitet.", "pct": 87})
