@@ -227,13 +227,66 @@ def _cvss_badge_compact(score: float, severity: str) -> str:
 LLM_SAMPLE_PER_GROUP = 30
 
 
+# Elements that never carry a closing tag — they must not reach the stack.
+_VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+              "link", "meta", "param", "source", "track", "wbr"}
+
+_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>")
+
+
+def _sanitize_section_html(section: str) -> str:
+    """Repairs a group section the model left unfinished.
+
+    When a group runs into num_predict, its HTML stops mid-tag — in one
+    observed September 2026 report that happened five times out of seven
+    groups, once in the middle of a style attribute:
+
+        <span style="display:inline-block;background:#fffde7;...;font-family:
+
+    Appending anything to such a fragment puts it *inside* that open tag: the
+    browser reads the appended markup as attribute content and swallows
+    everything after it. In the report this made the group's finding list
+    vanish and nested the next group card inside the previous one.
+
+    A half-written tag cannot be repaired — an attribute may continue for any
+    length — so it is dropped. Everything before it is kept: this tidies up,
+    it does not truncate.
+    """
+    if not section:
+        return section
+
+    # 1. Drop a tag that was cut off at the end.
+    if section.rfind("<") > section.rfind(">"):
+        section = section[:section.rfind("<")]
+
+    # 2. Close whatever is still open, innermost first.
+    stack: list[str] = []
+    for m in _TAG_RE.finditer(section):
+        slash, name, rest = m.group(1), m.group(2).lower(), m.group(3)
+        if name in _VOID_TAGS or rest.rstrip().endswith("/"):
+            continue
+        if slash:
+            # A closing tag also clears anything the model left open above it.
+            if name in stack:
+                while stack and stack.pop() != name:
+                    pass
+        else:
+            stack.append(name)
+
+    return section + "".join(f"</{t}>" for t in reversed(stack))
+
+
 def _append_table_to_section(section: str, table: str) -> str:
     """Places the complete table inside the model's group card (before its
-    closing </div>) so it inherits the card's frame and colour. If there is no
-    </div> — the model returned broken HTML — it is appended rather than
-    lost."""
+    closing </div>) so it inherits the card's frame and colour.
+
+    The section is tidied up first: appending to truncated model HTML used to
+    attach the table to an open tag and take the rest of the report with it —
+    see _sanitize_section_html(). If no </div> remains after that, the table
+    is appended rather than lost."""
     if not table:
         return section
+    section = _sanitize_section_html(section)
     idx = section.rfind("</div>")
     if idx == -1:
         return section + table
